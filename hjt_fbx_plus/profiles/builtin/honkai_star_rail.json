@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "id": "honkai_star_rail",
+  "name": "Honkai: Star Rail",
+  "description": "Honkai: Star Rail character rips. Finds *_Color, *_LightMap, *_Cool_Ramp / *_Warm_Ramp, *FaceMap*, *_Stockings and *_ExpressionMap textures by material and part names. Base colors are faithful; toon shading is an approximation and the game-shader data maps are attached as labeled auxiliary textures. Naming rules follow common community rips; adjust them in the profile editor if yours differ.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {
+    "min_score": 3,
+    "rules": [
+      {"target": "texture", "pattern": "(?i)^Avatar_.+_\\d{2}_(Body\\d?|Hair|Face)_(Color|LightMap)", "weight": 3},
+      {"target": "texture", "pattern": "(?i)_(Cool|Warm)_Ramp$", "weight": 2},
+      {"target": "texture", "pattern": "(?i)FaceMap", "weight": 1},
+      {"target": "texture", "pattern": "(?i)_Stockings$", "weight": 1}
+    ]
+  },
+  "textures": {
+    "slots": [
+      {"slot": "ramp", "pattern": "_(?:cool|warm)_ramp$"},
+      {"slot": "base_color", "pattern": "_color(?:_a)?(?:_l)?$"},
+      {"slot": "lightmap", "pattern": "_lightmap(?:_l)?$"},
+      {"slot": "face_map", "pattern": "facemap(?:_\\d+)?$"},
+      {"slot": "stocking", "pattern": "_stockings?$"},
+      {"slot": "expression", "pattern": "_expression(?:map)?(?:_?mask)?$"}
+    ],
+    "name_templates": [
+      {"material": "(?i)^(?:M_|Mat_)?(?P<prefix>.+?_\\d{2})_(?P<part>Body\\d?|Hair|Face)", "textures": ["{prefix}_{part}"]}
+    ],
+    "strip_material_tokens": ["(?i)^(?:mat|m)_", "(?i)_mat$", "\\.\\d{3}$"]
+  },
+  "materials": {
+    "default": {"template": "TOON", "base_alpha_usage": "NONE", "shadow_tint": [0.8, 0.78, 0.88], "shadow_threshold": 0.5},
+    "rules": [
+      {"match": "(?i)face", "category": "Face"},
+      {"match": "(?i)hair", "category": "Hair"},
+      {"match": "(?i)(eyeshadow|eye_shadow|_eff|effect|glass)", "category": "Effect", "settings": {"alpha_mode": "BLEND", "base_alpha_usage": "TRANSPARENCY"}}
+    ]
+  },
+  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+}

@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "id": "afk_journey",
+  "name": "AFK Journey",
+  "description": "AFK Journey character exports (Trident exporter: FBX + Materials/*.json + Textures/). Textures come from the original Unity materials (faithful). Shading is a toon approximation driven by the game's own _DarkTint, _ShadowThreshold and _ShadowFeather values; masks, misc, SDF, matcap, detail and reflection maps are attached as labeled auxiliary textures.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {
+    "min_score": 3,
+    "rules": [
+      {"target": "material", "pattern": "(?i)^pbsc_char_.+_show$", "weight": 3},
+      {"target": "texture", "pattern": "(?i)^pbsc_char_", "weight": 2},
+      {"target": "shader", "pattern": "^iGame/Char/", "weight": 3},
+      {"target": "creator", "pattern": "(?i)trident", "weight": 1}
+    ]
+  },
+  "textures": {
+    "unity_slots": {
+      "_MainTex": "base_color", "_Mask": "mask", "_MiscMap": "misc", "_SDF": "face_map",
+      "_MatCapTex": "matcap", "_DetailMask": "detail", "_CustomEnvironmentReflection": "env"
+    },
+    "slots": [
+      {"slot": "mask", "pattern": "_m$"},
+      {"slot": "misc", "pattern": "_misc$"},
+      {"slot": "face_map", "pattern": "_sdf$"}
+    ],
+    "strip_material_tokens": ["(?i)_show$", "\\.\\d{3}$"]
+  },
+  "materials": {
+    "default": {"template": "TOON", "base_alpha_usage": "NONE", "shadow_tint": [0.8, 0.82, 0.88], "shadow_threshold": 0.55, "shadow_feather": 0.03},
+    "rules": [
+      {"match": "(?i)_shadow_show$", "category": "Shadow overlay", "settings": {"template": "FLAT"}},
+      {"match": "(?i)_skin_show$", "category": "Skin"},
+      {"match": "(?i)_brow_show$", "category": "Brow"},
+      {"match": "(?i)_hair_show$", "category": "Hair"},
+      {"match": "(?i)_weapon_show$", "category": "Weapon"}
+    ]
+  },
+  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+}

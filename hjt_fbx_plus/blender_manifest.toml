@@ -1,0 +1,32 @@
+schema_version = "1.0.0"
+
+id = "hjt_fbx_plus"
+version = "1.0.0"
+name = "HJT FBX+"
+tagline = "Advanced FBX & Game Asset Importer"
+maintainer = "HJT Studio"
+type = "add-on"
+
+website = "https://github.com/Jideeh1/HJT-FBX-Plus"
+
+tags = ["Import-Export"]
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+copyright = [
+  "2026 HJT Studio",
+]
+
+[permissions]
+files = "Import FBX files and ZIP/7Z/RAR archives, extract them to a temporary cache, save profiles and reports"
+network = "Only when you press Install in the add-on preferences: downloads optional Python packages with pip"
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "*.pyc",
+  "*.part",
+]

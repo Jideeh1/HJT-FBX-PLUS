@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "honkai_impact_3rd",
+  "name": "Honkai Impact 3rd",
+  "description": "Honkai Impact 3rd character rips. Finds *_Color, *_LightMap, *_Ramp and face shadow textures by material and part names (Avatar_<Name>_C<n>_... conventions). Base colors are faithful; toon shading is an approximation and game-shader data maps are attached as labeled auxiliary textures. Naming rules follow common community rips; adjust them in the profile editor if yours differ.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {
+    "min_score": 3,
+    "rules": [
+      {"target": "texture", "pattern": "(?i)Avatar_.+_C\\d+_(Texture_)?(Body|Hair|Face)_(Color|LightMap)", "weight": 3},
+      {"target": "texture", "pattern": "(?i)_C\\d+_.*_Ramp$", "weight": 1},
+      {"target": "material", "pattern": "(?i)_C\\d+_.*(Body|Hair|Face)", "weight": 1}
+    ]
+  },
+  "textures": {
+    "slots": [
+      {"slot": "base_color", "pattern": "_colou?r(?:_?a)?$"},
+      {"slot": "lightmap", "pattern": "_lightmap$"},
+      {"slot": "ramp", "pattern": "_ramp$"},
+      {"slot": "face_map", "pattern": "_face_?(?:lightmap|map|shadow)$"}
+    ],
+    "name_templates": [
+      {"material": "(?i)^(?:Mat_)?(?P<prefix>(?:Avatar_)?.+?_C\\d+)_(?:Texture_)?(?P<part>Body|Hair|Face)", "textures": ["{prefix}_Texture_{part}", "{prefix}_{part}"]}
+    ]
+  },
+  "materials": {
+    "default": {"template": "TOON", "base_alpha_usage": "NONE", "shadow_tint": [0.8, 0.77, 0.86], "shadow_threshold": 0.5},
+    "rules": [
+      {"match": "(?i)face", "category": "Face"},
+      {"match": "(?i)hair", "category": "Hair"}
+    ]
+  },
+  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+}

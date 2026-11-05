@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "generic",
+  "name": "Generic FBX",
+  "description": "Faithful import for any FBX. Uses FBX texture links and Unity material JSON when present, then filename conventions (_D/_N/_ORM, BaseColor/Normal/Roughness...). Materials are rebuilt as Principled BSDF.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {"min_score": 0, "rules": []},
+  "materials": {
+    "default": {"template": "PBR"},
+    "rules": [
+      {"match": "(?i)(glass|transparent|alpha|decal|lens|window)", "settings": {"alpha_mode": "BLEND", "base_alpha_usage": "TRANSPARENCY"}},
+      {"match": "(?i)(cutout|foliage|leaf|leaves|grass|lash|eyelash|hairtip|_cut$)", "settings": {"alpha_mode": "CLIP", "base_alpha_usage": "TRANSPARENCY"}}
+    ]
+  },
+  "corrections": {"fit_bone_lengths": false, "verify_skinning": true}
+}

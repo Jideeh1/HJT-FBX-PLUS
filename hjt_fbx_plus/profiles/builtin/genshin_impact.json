@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "genshin_impact",
+  "name": "Genshin Impact",
+  "description": "Genshin Impact character rips. Finds *_Tex_<Part>_Diffuse / _Lightmap / _Normalmap, *_<Part>_Shadow_Ramp and Avatar_<BodyType>_Tex_FaceLightmap from material names (Dress parts fall back to Body/Hair textures, flagged as guessed). Diffuse colors and normal maps are faithful; the toon shading is an approximation. Lightmaps, ramps and face maps are attached as labeled auxiliary textures because Genshin's shader is proprietary. Naming rules follow common community rips; adjust them in the profile editor if yours differ.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {
+    "min_score": 3,
+    "rules": [
+      {"target": "texture", "pattern": "(?i)_Tex_(Body|Hair|Face)_(Diffuse|Lightmap|Normalmap)$", "weight": 3},
+      {"target": "texture", "pattern": "(?i)_(Body|Hair)_Shadow_Ramp$", "weight": 2},
+      {"target": "texture", "pattern": "(?i)^Avatar_(Boy|Girl|Lady|Male|Loli)_Tex_FaceLightmap$", "weight": 3},
+      {"target": "material", "pattern": "(?i)^Avatar_.+_Mat_(Body|Hair|Face|Dress\\d?)$", "weight": 3},
+      {"target": "shader", "pattern": "(?i)mihoyo", "weight": 2}
+    ]
+  },
+  "textures": {
+    "slots": [
+      {"slot": "face_map", "pattern": "_tex_facelightmap$"},
+      {"slot": "base_color", "pattern": "_diffuse$"},
+      {"slot": "lightmap", "pattern": "_lightmap$"},
+      {"slot": "normal", "pattern": "_normalmap$"},
+      {"slot": "ramp", "pattern": "_shadow_ramp$"},
+      {"slot": "matcap", "pattern": "^avatar_tex_metalmap$"}
+    ],
+    "unity_slots": {"_LightMapTex": "lightmap", "_PackedShadowRampTex": "ramp", "_FaceMapTex": "face_map", "_MTMap": "matcap"},
+    "name_templates": [
+      {"material": "(?i)^(?P<prefix>.+)_Mat_(?P<part>[A-Za-z]+\\d?)$", "textures": ["{prefix}_Tex_{part}", "{prefix}_{part}"]},
+      {"material": "(?i)^Avatar_(?P<body>Boy|Girl|Lady|Male|Loli)_.+_Mat_Face$", "textures": ["Avatar_{body}"], "slots": ["face_map"]}
+    ],
+    "part_fallbacks": {"dress": ["body", "hair"], "dress1": ["body", "hair"], "dress2": ["hair", "body"]}
+  },
+  "materials": {
+    "default": {"template": "TOON", "base_alpha_usage": "NONE", "shadow_tint": [0.82, 0.76, 0.84], "shadow_threshold": 0.5},
+    "rules": [
+      {"match": "(?i)_Mat_Face$", "category": "Face"},
+      {"match": "(?i)_Mat_Hair$", "category": "Hair"},
+      {"match": "(?i)(glass|_eff$|_effect)", "category": "Effect", "settings": {"alpha_mode": "BLEND", "base_alpha_usage": "TRANSPARENCY"}}
+    ]
+  },
+  "categories": {"custom": [{"name": "Effect mesh", "pattern": "(?i)^EffectMesh$", "action": "HIDE"}]},
+  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+}

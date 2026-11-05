@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "id": "zenless_zone_zero",
+  "name": "Zenless Zone Zero",
+  "description": "Zenless Zone Zero exports (MAT_<Name>_UI materials with a Materials/ folder of Unity JSON). _MainTex/_D is the base color (faithful), _N is used as the normal map, _M (_OtherDataTex) and _A (_OtherDataTex2) are game-shader data kept as auxiliary textures, and face materials keep their light map as an auxiliary texture. Hair-shadow stencil and outline meshes are hidden (not deleted). Toon shading is an approximation.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {
+    "min_score": 3,
+    "rules": [
+      {"target": "material", "pattern": "(?i)^MAT_.+_UI$", "weight": 3},
+      {"target": "texture", "pattern": "(?i)_(Body|Hair|Face|Weapon|Eye)\\d*_[DNMA]$", "weight": 2},
+      {"target": "mesh", "pattern": "(?i)HairShadow", "weight": 1}
+    ]
+  },
+  "textures": {
+    "unity_slots": {"_MainTex": "base_color", "_OtherDataTex": "mask", "_OtherDataTex2": "mask", "_LightTex": "normal"},
+    "slots": [
+      {"slot": "base_color", "pattern": "_d$"},
+      {"slot": "normal", "pattern": "_n$"},
+      {"slot": "mask", "pattern": "_[ma]$"},
+      {"slot": "face_map", "pattern": "face_?lightmap"}
+    ],
+    "strip_material_tokens": ["(?i)^MAT_", "(?i)_UI$", "\\.\\d{3}$"]
+  },
+  "materials": {
+    "default": {"template": "TOON", "base_alpha_usage": "NONE", "normal_format": "AUTO", "shadow_tint": [0.8, 0.78, 0.86], "shadow_threshold": 0.5},
+    "rules": [
+      {"match": "(?i)(face|brow)", "category": "Face", "settings": {"unity_slots": {"_LightTex": "face_map"}}},
+      {"match": "(?i)_eye(_ui)?$", "category": "Eye", "settings": {"unity_slots": {"_LightTex": "face_map"}}},
+      {"match": "(?i)hair", "category": "Hair"},
+      {"match": "(?i)weapon", "category": "Weapon"}
+    ]
+  },
+  "categories": {
+    "custom": [
+      {"name": "Hair shadow stencil", "pattern": "(?i)hairshadow", "action": "HIDE"},
+      {"name": "Outline", "pattern": "(?i)outline", "action": "HIDE"}
+    ]
+  },
+  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+}
