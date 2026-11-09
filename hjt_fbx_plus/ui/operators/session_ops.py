@@ -343,6 +343,6 @@ class HJTFBX_OT_open_folder(bpy.types.Operator):
         return {"FINISHED"}
 
 
-CLASSES = (HJTFBX_OT_analyze, HJTFBX_OT_select, HJTFBX_OT_remove, HJTFBX_OT_clear, HJTFBX_OT_unlock,
-           HJTFBX_OT_tree_toggle, HJTFBX_OT_tree_expand, HJTFBX_OT_tree_queue, HJTFBX_OT_extract,
-           HJTFBX_OT_cache_clear, HJTFBX_OT_tools_detect, HJTFBX_OT_install_dep, HJTFBX_OT_open_folder)
+#queue/tree/extract ops stay unregistered (1 model at a time now). archive tools + packages r back for rar/7z
+CLASSES = (HJTFBX_OT_analyze, HJTFBX_OT_select, HJTFBX_OT_remove, HJTFBX_OT_clear, HJTFBX_OT_cache_clear,
+           HJTFBX_OT_tools_detect, HJTFBX_OT_install_dep, HJTFBX_OT_open_folder)

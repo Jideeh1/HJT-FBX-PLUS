@@ -36,5 +36,5 @@
       {"match": "(?i)(eyeshadow|eye_shadow|_eff|effect|glass)", "category": "Effect", "settings": {"alpha_mode": "BLEND", "base_alpha_usage": "TRANSPARENCY"}}
     ]
   },
-  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+  "corrections": {"align_bone_chains": true, "fit_bone_lengths": true, "verify_skinning": true}
 }

@@ -13,6 +13,12 @@ Most limits come from what Blender can represent, from what Blender's FBX import
 - **C++ importer**: ignores the bone-axis, force-connect, pre/post-rotation toggle and manual-orientation options (listed in the report when set).
 - **Importer only**: HJT FBX+ does not export FBX.
 
+## UEModel
+
+- Only LOD0 is imported. Sockets, virtual bones and collision shapes in the file are not created.
+- `.ueanim` and `.uepose` files are not imported; use the UEFormat add-on for those.
+- ZSTD-compressed files need the `zstandard` Python package, which Blender ships.
+
 ## Materials and textures
 
 - **Game shaders are approximated.** Toon materials are a two-tone cel shader. Outlines, rim lights, SDF face shadows, light-map driven shading and ramps from proprietary game shaders are not recreated. Their textures are loaded and labeled in the node tree so you can build on them. Everything approximated is labeled as such (see [PROFILES.md](PROFILES.md)).

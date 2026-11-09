@@ -68,7 +68,6 @@ Add `--profile` for a cProfile breakdown of the HJT FBX+ code, or `--archives-on
 
 - **Use the C++ importer** (*Advanced Settings › Import Engine › C++ (Fast)*, Blender 4.5+) for big meshes and batches. It is 4–6× faster than the Python importer. It ignores the bone-axis and manual-orientation options, which game assets rarely need.
 - **Install pycryptodomex** if you work with password-protected 7z or AES ZIP archives.
-- **Keep extracted files** (*Preferences › Clean Up › When Blender Closes*) when you re-import the same archives while iterating on settings.
 - **Turn off Analyze on Add** for very large queues if you do not need the preview. Imports work without it.
 - **Background threads** (preferences) can be raised to 3–4 on fast SSDs with many small archives. Extraction from a single archive is sequential either way.
 - **Pack vs. copy**: packing many large textures makes the .blend big. *Copy to Folder* keeps them as separate files next to the .blend.

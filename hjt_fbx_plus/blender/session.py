@@ -15,6 +15,7 @@ from ..archives import is_archive_path
 from ..archives.base import ArchiveError, BackendUnavailable, PasswordRequired, WrongPassword
 from ..fbx.document import FbxDocument, sniff_fbx
 from ..fbx.inspect import inspect_document
+from ..uemodel import ALL_PARTS, EXT as UE_EXT, is_uemodel, read_uemodel, summarize as ue_summarize
 from ..profiles.detect import detect as detect_profile
 from ..textures.discovery import plan_materials
 
@@ -24,7 +25,7 @@ class SourceState:
         self.path = os.path.abspath(path)
         self.label = os.path.basename(path)
         low = path.lower()
-        self.kind = "FBX" if low.endswith(".fbx") else ("ZIP" if low.endswith(".zip") else ("RAR" if (low.endswith(".rar")) else ("7Z" if ".7z" in low else "FOLDER")))
+        self.kind = "FBX" if low.endswith((".fbx", UE_EXT)) else ("ZIP" if low.endswith(".zip") else ("RAR" if (low.endswith(".rar")) else ("7Z" if ".7z" in low else "FOLDER")))
         if os.path.isdir(path):
             self.kind = "FOLDER"
         self.password = None
@@ -98,7 +99,7 @@ class Session:
                 continue
             if not os.path.isfile(p):
                 continue
-            if p.lower().endswith(".fbx"):
+            if p.lower().endswith((".fbx", UE_EXT)):
                 src = self.sources.get(p) or SourceState(p)
                 src.status = "READY"
                 src.size = os.path.getsize(p)
@@ -129,7 +130,7 @@ class Session:
             dirs[:] = [d for d in dirs if not d.startswith(".")]
             for f in sorted(files):
                 full = os.path.join(root, f)
-                if f.lower().endswith(".fbx") or is_archive_path(f):
+                if f.lower().endswith((".fbx", UE_EXT)) or is_archive_path(f):
                     found.append(full)
         return self.add_paths(found, auto_analyze=auto_analyze, options=options) if found else []
 
@@ -156,15 +157,14 @@ class Session:
             src.entries = st["files"]
             src.fbx = st["fbx"]
             src.images = st["images"]
-            src.message = "%d FBX, %d images, %d files" % (st["fbx"], st["images"], st["files"])
+            src.message = "%d models, %d images, %d files" % (st["fbx"], st["images"], st["files"])
             new = []
-            for e in aidx.fbx:
-                m = ModelState(src.key, src.path, e.path, e.size)
+            for m in _all_parts_models(src, aidx.fbx) + [ModelState(src.key, src.path, e.path, e.size) for e in aidx.fbx]:
                 if m.key not in self.models:
                     self.models[m.key] = m
                     new.append(m.key)
             if not aidx.fbx:
-                src.message = "No FBX files in this archive"
+                src.message = "No FBX or UEModel files in this archive"
             self.changed()
             if auto_analyze and new:
                 self.analyze(new, options)
@@ -280,24 +280,40 @@ class Session:
 def _analyze_model(task, path, member, password, services, opts):
     #worker: extract just the fbx, inspect it, plan textures (no texture extraction for a preview)
     reader = tidx = None
+    all_parts = (member or path).endswith(ALL_PARTS)
     if member is not None:
-        reader, _aidx, tidx = services.archive(path, password)
-        entry = reader.find(member)
-        if entry is None:
+        reader, aidx, tidx = services.archive(path, password)
+        if all_parts:
+            base_dir = member[:-len(ALL_PARTS)].rstrip("/")
+            entries = [e for e in aidx.fbx if is_uemodel(e.path) and e.path.rpartition("/")[0] == base_dir]
+        else:
+            entry = reader.find(member)
+            entries = [entry] if entry is not None else []
+            base_dir = member.rpartition("/")[0]
+        if not entries:
             raise ArchiveError("'%s' is missing from the archive" % member)
-        local = services.cache.materialize(reader, [entry], cancel=task.cancel)[entry.path]
-        base_dir = entry.path.rpartition("/")[0]
+        got = services.cache.materialize(reader, entries, cancel=task.cancel)
+        files = [got[e.path] for e in entries]
     else:
-        local = path
-        base_dir = os.path.dirname(path).replace("\\", "/")
-        roots = [os.path.dirname(path)]
+        folder = os.path.dirname(path)
+        files = [os.path.join(folder, f) for f in sorted(os.listdir(folder)) if is_uemodel(f)] if all_parts else [path]
+        base_dir = folder.replace("\\", "/")
+        roots = [folder]
         parent = os.path.dirname(roots[0])
         if int(opts.get("search_parent_levels", 1)) > 0 and parent and parent != roots[0]:
             roots.append(parent)
         tidx = services.disk_index(roots, int(opts.get("search_depth", 4)), task.cancel)
+    local = files[0]
     task.set_progress(0.3, "Parsing")
-    with FbxDocument.open(local, lazy=True, cancel=task.cancel) as doc:
-        summary = inspect_document(doc, deep=True, cancel=task.cancel)
+    if is_uemodel(member or path):
+        parts = []
+        for f in files:
+            with open(f, "rb") as fh:
+                parts.append((os.path.splitext(os.path.basename(f))[0], read_uemodel(fh.read())))
+        summary = ue_summarize(parts)
+    else:
+        with FbxDocument.open(local, lazy=True, cancel=task.cancel) as doc:
+            summary = inspect_document(doc, deep=True, cancel=task.cancel)
     nearby = [e.name for e in tidx.images if e.dir_l.startswith(base_dir.lower())][:400]
     if opts.get("profile", "AUTO") == "AUTO":
         pid, scores, _hits = detect_profile(services.registry, summary, nearby, (), member or path)
@@ -314,6 +330,23 @@ def _analyze_model(task, path, member, password, services, opts):
     plans = plan_materials(summary, tidx, profile, base_dir, {}, read_json)
     task.set_progress(1.0, "Done")
     return summary, plans, profile.id, scores
+
+
+def _all_parts_models(src, entries):
+    #ue characters come as body + face + hair + ... sharing one skeleton. a folder w 2+ of them
+    # gets an extra "all parts" model so they land on ONE armature instead of 4
+    by_dir = {}
+    for e in entries:
+        if is_uemodel(e.path):
+            by_dir.setdefault(e.path.rpartition("/")[0], []).append(e)
+    out = []
+    for folder, lst in by_dir.items():
+        if len(lst) < 2:
+            continue
+        m = ModelState(src.key, src.path, (folder + "/" if folder else "") + ALL_PARTS, sum(e.size for e in lst))
+        m.label = "%s (all %d parts)" % (folder.rsplit("/", 1)[-1] or os.path.splitext(src.label)[0], len(lst))
+        out.append(m)
+    return out
 
 
 def pipeline_prefetch(task, path, password, services, members):

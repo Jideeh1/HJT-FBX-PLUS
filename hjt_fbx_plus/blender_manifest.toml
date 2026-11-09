@@ -1,13 +1,13 @@
 schema_version = "1.0.0"
 
 id = "hjt_fbx_plus"
-version = "1.0.0"
+version = "1.2.0"
 name = "HJT FBX+"
-tagline = "Advanced FBX & Game Asset Importer"
+tagline = "Advanced FBX & UEModel Game Asset Importer"
 maintainer = "HJT Studio"
 type = "add-on"
 
-website = "https://github.com/Jideeh1/HJT-FBX-Plus"
+website = "https://github.com/Jideeh1/HJT-FBX-PLUS"
 
 tags = ["Import-Export"]
 
@@ -21,8 +21,8 @@ copyright = [
 ]
 
 [permissions]
-files = "Import FBX files and ZIP/7Z/RAR archives, extract them to a temporary cache, save profiles and reports"
-network = "Only when you press Install in the add-on preferences: downloads optional Python packages with pip"
+files = "Import FBX files or FBX inside ZIP/7Z/RAR archives (extracted to a temporary cache), save profiles and reports"
+network = "Checks GitHub (github.com/Jideeh1/HJT-FBX-PLUS) for new releases and downloads updates; optional pip packages for exotic 7z archives when you press Install"
 
 [build]
 paths_exclude_pattern = [

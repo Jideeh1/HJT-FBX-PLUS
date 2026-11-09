@@ -187,6 +187,7 @@ class HJTFBX_PG_profile_edit(bpy.types.PropertyGroup):
     normal_format: EnumProperty(name="Normal Format", items=[("AUTO", "Auto", ""), ("RGB", "RGB", ""), ("RG", "RG (BC5)", ""), ("AG", "AG (DXT5nm)", "")], default="AUTO")
     shadow_tint: FloatVectorProperty(name="Shadow Tint", subtype="COLOR", size=3, min=0.0, max=1.0, default=(0.78, 0.74, 0.84))
     shadow_threshold: FloatProperty(name="Shadow Threshold", min=0.0, max=1.0, default=0.5)
+    align_bone_chains: BoolProperty(name="Align Bone Chains", description="Point bones at the next bone of their chain (mesh and animation unchanged)")
     fit_bone_lengths: BoolProperty(name="Fit Bone Lengths")
     verify_skinning: BoolProperty(name="Verify Skinning", default=True)
     use_material_json: BoolProperty(name="Material JSON", default=True)

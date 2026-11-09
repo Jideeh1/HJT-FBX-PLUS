@@ -99,6 +99,24 @@ DEFAULT_UNITY_SLOTS = {
     "_StockingsMap": "stocking", "_ExpressionMap": "expression",
 }
 
+#ue material instance params (fmodel json). PM_* r fmodels own picks of the main maps
+UE_SLOTS = {
+    "PM_Diffuse": "base_color", "BaseColor": "base_color", "Base Color": "base_color", "BaseMap": "base_color",
+    "BaseColorMap": "base_color", "BaseTexture": "base_color", "Diffuse": "base_color", "DiffuseMap": "base_color",
+    "Albedo": "base_color", "MainTex": "base_color",
+    "PM_Normals": "normal", "Normal": "normal", "Normals": "normal", "NormalMap": "normal", "Normal Map": "normal",
+    "NomralMap": "normal", "NormalTexture": "normal",
+    "PM_Emissive": "emission", "Emissive": "emission", "EmissiveMap": "emission", "Emission": "emission",
+    "EmissiveTexture": "emission",
+    "MRA Map": "mra", "MRA": "mra", "MRAMap": "mra", "ORM": "orm", "ORMMap": "orm", "RMA": "rma",
+    "AO": "ao", "AOMap": "ao", "AmbientOcclusion": "ao", "Roughness": "roughness", "RoughnessMap": "roughness",
+    "Metallic": "metallic", "MetallicMap": "metallic", "Opacity": "opacity", "OpacityMask": "opacity",
+    "LightMap": "lightmap", "ILM": "lightmap", "Ramp": "ramp", "RampMap": "ramp", "RampAltas": "ramp",
+    "RampAtlas": "ramp", "ShadowRamp": "ramp", "MatCap": "matcap", "Matcap": "matcap", "MatcapTex": "matcap",
+    "SDF": "face_map", "FaceSDF": "face_map", "SDFTex": "face_map", "FaceShadow": "face_map",
+}
+DEFAULT_UNITY_SLOTS.update(UE_SLOTS)
+
 _compiled_cache = {}
 
 

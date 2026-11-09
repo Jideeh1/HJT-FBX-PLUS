@@ -19,7 +19,7 @@ import threading
 import time
 import uuid
 
-POLICIES = ("AFTER_IMPORT", "SESSION", "KEEP")
+POLICIES = ("AFTER_IMPORT",)  #extracted models never outlive their import
 
 
 def default_root():

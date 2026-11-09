@@ -6,13 +6,13 @@ HJT FBX+ ships as one ZIP file, `hjt_fbx_plus-<version>.zip`, that installs on e
 
 1. *Edit › Preferences › Get Extensions*.
 2. Open the **⌄** menu at the top right and choose **Install from Disk…**
-3. Select `hjt_fbx_plus-1.0.0.zip`.
+3. Select `hjt_fbx_plus-1.2.0.zip`.
 4. The extension is enabled automatically. You will find it under *Add-ons* as **HJT FBX+**.
 
 ## Blender 3.6 – 4.1 (legacy add-on)
 
 1. *Edit › Preferences › Add-ons › Install…*
-2. Select `hjt_fbx_plus-1.0.0.zip` and click **Install Add-on**.
+2. Select `hjt_fbx_plus-1.2.0.zip` and click **Install Add-on**.
 3. Tick the checkbox next to **Import-Export: HJT FBX+**.
 
 ## Check that it works
@@ -49,4 +49,4 @@ Then delete the user folder if you no longer need your profiles and history.
 | Temporary extraction cache | `<system temp folder>/hjt_fbx_plus_cache/session-*`, or the *Cache Folder* set in the preferences |
 | Optional Python packages | `<user folder>/lib/py3XX/`, never Blender's own `site-packages` |
 
-The cache is cleaned according to the *Clean Up* preference: after each import batch (default), when Blender closes, or only when you press *Clear Cache*. Leftovers from a crashed session are removed the next time the add-on starts (after 24 hours).
+Extracted files are deleted as soon as each import finishes (textures are packed into the .blend first); HJT FBX+ never keeps models on disk. Leftovers from a crashed Blender are removed the next time the add-on starts.

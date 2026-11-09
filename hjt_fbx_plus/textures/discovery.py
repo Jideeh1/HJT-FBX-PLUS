@@ -23,6 +23,7 @@ CORE_SLOTS = ("base_color", "normal", "metallic", "roughness", "smoothness", "sp
               "emission_mask", "opacity", "orm", "mra", "rma", "metallic_smoothness", "hdrp_mask")
 FAITHFUL_SOURCES = ("fbx", "embedded", "unity-json")
 _DUP = re.compile(r"\.\d{3}$")
+_UE_PLACEHOLDER = re.compile(r"(?i)^(default|t_srgb_|t_linear_|t_flat|t_white|t_black|t_gray|t_grey)|noise|tonemap|lut$")
 
 
 class Assignment:
@@ -267,6 +268,14 @@ class _Planner:
             prefer = [json_dir.rpartition("/")[0] + "/Textures", self.base_dir + "/Textures", json_dir]
             for uslot, info in um.textures.items():
                 slot = overrides.get(uslot) or self.profile.unity_slot(uslot)
+                #ue instances list every param of the parent shader: noise, dissolve, luts, 1x1 defaults...
+                # unknown params only stay when the filename says what they r
+                if um.kind == "ue" and _UE_PLACEHOLDER.search(info["name"]):
+                    continue
+                if um.kind == "ue" and slot == "aux":
+                    slot, _base = classify_name(info["name"].lower(), self.rules)
+                    if not slot or SLOTS.get(slot, {}).get("aux") and slot not in ("lightmap", "ramp", "face_map", "matcap", "mask"):
+                        continue
                 cands = self.index.find_stem(info["name"], self.base_dir, prefer)
                 if not cands:
                     p.missing.append({"slot": slot, "name": info["name"], "source": "unity-json", "property": uslot})

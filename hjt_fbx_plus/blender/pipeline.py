@@ -29,11 +29,19 @@ from ..textures.discovery import plan_materials, required_entries
 from ..textures.imageinfo import probe_file
 from ..textures.index import TexEntry, TextureIndex
 from ..textures.slots import SLOTS
+from ..uemodel import ALL_PARTS, is_uemodel, read_uemodel, summarize as ue_summarize
 
 #these touch bpy, only used from the main thread stages
 import bpy  # noqa: E402
 
-from . import compat, engines, images as img_mod, mapping as map_mod, materials, postprocess  # noqa: E402
+from . import chains, compat, engines, images as img_mod, mapping as map_mod, materials, postprocess, uebuild  # noqa: E402
+
+UE_ENGINE = "UEMODEL"
+
+
+class _UEEngine:
+    id = UE_ENGINE
+    label = "UEFormat (.uemodel)"
 
 
 class Source:
@@ -152,6 +160,7 @@ class JobPrep:
         self.extracted = []
         self.base_dir = ""
         self.fatal = ""
+        self.ue_parts = None  #[(label, UEModel)] when the source is .uemodel
 
     def close(self):
         if self.doc is not None:
@@ -181,26 +190,51 @@ def prepare_job(task, source, opts, services, engine_avail):
             raise Cancelled("cancelled")
 
     reader = aidx = tidx = None
+    ue = is_uemodel(source.member or source.path)
+    ue_files = []
     step(0.02, "Locating %s" % source.label)
     if source.is_archive:
         reader, aidx, tidx = services.archive(source.path, source.password)
-        entry = reader.find(source.member)
-        if entry is None:
+        if source.member.endswith(ALL_PARTS):
+            folder = source.member[:-len(ALL_PARTS)].rstrip("/")
+            entries = [e for e in aidx.fbx if is_uemodel(e.path) and e.path.rpartition("/")[0] == folder]
+        else:
+            entry = reader.find(source.member)
+            entries = [entry] if entry is not None else []
+        if not entries:
             raise ArchiveError("'%s' is no longer in %s" % (source.member, os.path.basename(source.path)))
-        got = services.cache.materialize(reader, [entry], cancel=cancel)
-        prep.local_fbx = got[entry.path]
-        prep.extracted.append(prep.local_fbx)
-        prep.base_dir = entry.path.rpartition("/")[0]
+        got = services.cache.materialize(reader, entries, cancel=cancel)
+        for e in entries:
+            prep.extracted.append(got[e.path])
+            ue_files.append((os.path.splitext(e.name)[0], got[e.path]))
+        prep.local_fbx = got[entries[0].path]
+        prep.base_dir = entries[0].path.rpartition("/")[0]
     else:
         prep.local_fbx = source.path
         prep.base_dir = os.path.dirname(source.path).replace("\\", "/")
+        if ue and source.path.endswith(ALL_PARTS):
+            folder = source.path[:-len(ALL_PARTS)]
+            ue_files = [(os.path.splitext(f)[0], os.path.join(folder, f)) for f in sorted(os.listdir(folder)) if is_uemodel(f)]
+            prep.base_dir = folder.rstrip("\\/").replace("\\", "/")
+        elif ue:
+            ue_files = [(source.label, source.path)]
     prep.timings["locate"] = time.monotonic() - t0
 
-    step(0.15, "Reading FBX")
+    doc = None
     t1 = time.monotonic()
-    doc = FbxDocument.open(prep.local_fbx, lazy=False, cancel=cancel)
-    prep.doc = doc
-    prep.summary = inspect_document(doc, deep=True, cancel=cancel)
+    if ue:
+        step(0.15, "Reading UEModel")
+        prep.ue_parts = []
+        for label, path in ue_files:
+            with open(path, "rb") as fh:
+                prep.ue_parts.append((label, read_uemodel(fh.read())))
+            step(0.15 + 0.15 * len(prep.ue_parts) / max(1, len(ue_files)), "Reading %s" % label)
+        prep.summary = ue_summarize(prep.ue_parts, source.label)
+    else:
+        step(0.15, "Reading FBX")
+        doc = FbxDocument.open(prep.local_fbx, lazy=False, cancel=cancel)
+        prep.doc = doc
+        prep.summary = inspect_document(doc, deep=True, cancel=cancel)
     prep.timings["parse"] = time.monotonic() - t1
 
     step(0.35, "Finding textures")
@@ -216,7 +250,7 @@ def prepare_job(task, source, opts, services, engine_avail):
             roots.append(parent)
         tidx = services.disk_index(roots, int(opts.get("search_depth", 4)), cancel)
     #embedded media -> real files in the cache so they behave like any other texture
-    embedded = _extract_embedded(doc, services.cache, source, prep)
+    embedded = _extract_embedded(doc, services.cache, source, prep) if doc is not None else {}
     #profile
     nearby = [e.name for e in tidx.images if e.dir_l.startswith(prep.base_dir.lower())][:400]
     if opts.get("profile", "AUTO") == "AUTO":
@@ -257,6 +291,13 @@ def prepare_job(task, source, opts, services, engine_avail):
     for key, path in prep.tex_local.items():
         prep.image_info[key] = probe_file(path)
     prep.timings["extract"] = time.monotonic() - t3
+
+    if ue:
+        prep.engine_id = UE_ENGINE
+        if len(prep.ue_parts) > 1:
+            prep.notes.append("Imported %d parts onto one armature: %s." % (len(prep.ue_parts), ", ".join(lb for lb, _m in prep.ue_parts)))
+        step(1.0, "Ready")
+        return prep
 
     step(0.88, "Preparing FBX")
     t4 = time.monotonic()
@@ -384,8 +425,35 @@ def _target_collection(context, prep, opts):
     return coll
 
 
+def _import_ue(context, prep, opts, diag, res):
+    compat.ensure_object_mode(context)
+    coll = _target_collection(context, prep, opts)
+    if opts.get("organize", "MODEL") == "NONE":
+        coll = context.view_layer.active_layer_collection.collection
+    res.collection = coll
+    res.engine = _UEEngine
+    before = map_mod.snapshot()
+    t = time.monotonic()
+    try:
+        built, res.mapping = uebuild.build(context, prep.ue_parts, prep.source.label, coll)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("uemodel build failed")
+        res.new = map_mod.diff(before)
+        _discard(res.new)
+        res.error = "Could not build %s: %s" % (prep.source.label, exc)
+        return res
+    prep.timings["import"] = time.monotonic() - t
+    res.new = map_mod.diff(before)
+    for w in built.warnings:
+        diag.warning(w, prep.source.label)
+    res.ok = True
+    return res
+
+
 def import_job(context, prep, opts, diag):
     res = ImportResult()
+    if prep.ue_parts is not None:
+        return _import_ue(context, prep, opts, diag, res)
     model = prep.source.label
     eng = engines.ENGINES.get(prep.engine_id)
     if eng is None:
@@ -532,22 +600,38 @@ def finish_job(context, prep, res, opts, diag, image_cache, cache_root=""):
     #mesh level stuff
     t = time.monotonic()
     doc = prep.doc
-    if opts.get("keep_tangents", True) and not opts.get("bake_space_transform", False):
+    if doc is not None and opts.get("keep_tangents", True) and not opts.get("bake_space_transform", False):
         n = postprocess.store_tangents(doc, mp, diag, model)
         if n:
             diag.info("Kept FBX tangents on %d meshes (attributes fbx_tangent / fbx_binormal)." % n, model)
     corrections = profile.corrections
-    if opts.get("verify_skinning", True) and corrections.get("verify_skinning", True):
+    if doc is None:
+        bound = sum(1 for o in mp.objects.values() if o.type == "MESH" and o.find_armature() is not None)
+        report["skinning"] = {"ok": bound, "repaired": 0}
+    elif opts.get("verify_skinning", True) and corrections.get("verify_skinning", True):
         ok, fixed = postprocess.verify_skinning(doc, mp, diag, model)
         report["skinning"] = {"ok": ok, "repaired": fixed}
         if ok and not fixed:
             diag.info("Skinning verified: %d meshes bound to their armature." % ok, model)
     if prep.prep_result is not None and prep.prep_result.inbetweens and opts.get("inbetween_drivers", True):
         postprocess.rebuild_inbetweens(prep.prep_result.inbetweens, mp, diag, model)
+    arms = {o for o in mp.objects.values() if o.type == "ARMATURE"} | {v[0] for v in mp.bones.values()}
+    meshes = [o for o in mp.objects.values() if o.type == "MESH"]
+    aligned_arms = set()
+    al = opts.get("align_chains", "PROFILE")
+    #raw ue axes point every bone sideways no matter the game, so From Profile always aligns those
+    if al == "ON" or (al == "PROFILE" and (corrections.get("align_bone_chains", False) or prep.ue_parts is not None)):
+        for arm in arms:
+            try:
+                r = chains.align_chains(arm, meshes)
+                aligned_arms.add(arm)
+                diag.info("Aligned bone chains on '%s': %d bones point at their chain, %d forks/leaves kept straight%s." % (
+                    arm.name, r["aligned"], r["straight"], (", %d animation keys re-expressed" % r["keys"]) if r["keys"] else ""), model)
+            except RuntimeError as exc:
+                diag.warning("Bone chain alignment skipped on '%s': %s" % (arm.name, exc), model)
     fit = opts.get("fit_bones", "PROFILE")
     if fit == "ON" or (fit == "PROFILE" and corrections.get("fit_bone_lengths", False)):
-        meshes = [o for o in mp.objects.values() if o.type == "MESH"]
-        for arm in {o for o in mp.objects.values() if o.type == "ARMATURE"} | {v[0] for v in mp.bones.values()}:
+        for arm in arms - aligned_arms:  #aligned ones already have fitted lengths
             try:
                 n = postprocess.fit_bone_lengths(arm, meshes)
                 diag.info("Fitted %d bone lengths on '%s' (display only; deformation unchanged)." % (n, arm.name), model)

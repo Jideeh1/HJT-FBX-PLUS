@@ -94,6 +94,11 @@ OPTIONS = {
                           "description": "FBX axis along the bone (Python importer only)"},
     "secondary_bone_axis": {"type": "enum", "default": "X", "items": AXES, "label": "Secondary Bone Axis",
                             "description": "FBX axis used for bone roll (Python importer only)"},
+    "align_chains": {"type": "enum", "default": "PROFILE", "label": "Align Bone Chains", "items": [
+        ("PROFILE", "From Profile", "Align chains when the game profile asks for it (all built-in game profiles do) and always for .uemodel"),
+        ("ON", "On", "Point every bone at the next bone of its chain; animation is re-expressed so nothing moves"),
+        ("OFF", "Off", "Keep the importer's bone directions")],
+        "description": "Fix bone chains from game rips: tails point at the next joint, rolls kept, mesh and animation unchanged"},
     "fit_bones": {"type": "enum", "default": "PROFILE", "label": "Fit Bone Lengths", "items": [
         ("PROFILE", "From Profile", "Fit bone lengths when the game profile asks for it"),
         ("ON", "On", "Size bones to reach their child joint (display only, deformation unchanged)"),

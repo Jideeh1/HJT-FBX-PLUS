@@ -40,5 +40,5 @@
     ]
   },
   "categories": {"custom": [{"name": "Effect mesh", "pattern": "(?i)^EffectMesh$", "action": "HIDE"}]},
-  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+  "corrections": {"align_bone_chains": true, "fit_bone_lengths": true, "verify_skinning": true}
 }

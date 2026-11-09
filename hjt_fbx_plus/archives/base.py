@@ -13,7 +13,7 @@ import threading
 
 IMAGE_EXTS = frozenset((".png", ".tga", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".dds", ".exr",
                         ".hdr", ".psd", ".webp", ".ktx", ".gif"))
-FBX_EXTS = frozenset((".fbx",))
+FBX_EXTS = frozenset((".fbx", ".uemodel"))  #"fbx" kind = anything importable as a model
 DATA_EXTS = frozenset((".json", ".mat", ".txt", ".xml", ".yaml", ".yml"))
 ARCHIVE_EXTS = frozenset((".zip", ".7z", ".rar"))
 

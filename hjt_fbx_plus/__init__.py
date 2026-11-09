@@ -17,13 +17,13 @@
 bl_info = {
     "name": "HJT FBX+",
     "author": "HJT Studio",
-    "version": (1, 0, 0),
+    "version": (1, 2, 0),
     "blender": (3, 6, 0),
     "location": "File > Import > HJT FBX+  |  3D View > Sidebar > HJT FBX+",
-    "description": "Advanced FBX & Game Asset Importer: FBX and ZIP/7Z/RAR archives, automatic textures, "
-                   "material reconstruction and game profiles",
-    "doc_url": "https://github.com/Jideeh1/HJT-FBX-Plus",
-    "tracker_url": "https://github.com/Jideeh1/HJT-FBX-Plus/issues",
+    "description": "Advanced FBX & Game Asset Importer: automatic textures, material reconstruction, "
+                   "game profiles and bone chain fixing",
+    "doc_url": "https://github.com/Jideeh1/HJT-FBX-PLUS",
+    "tracker_url": "https://github.com/Jideeh1/HJT-FBX-PLUS/issues",
     "category": "Import-Export",
 }
 

@@ -38,7 +38,7 @@ def manifest_version():
 
 def exercise(name, label):
     check(name in bpy.context.preferences.addons, "%s: enabled as %s" % (label, name))
-    check(hasattr(bpy.ops.hjt_fbx_plus, "import_files") and hasattr(bpy.types, "HJTFBX_PT_import"),
+    check(hasattr(bpy.ops.hjt_fbx_plus, "import_files") and hasattr(bpy.types, "HJTFBX_PT_main"),
           "%s: operators and panels registered" % label)
     state = sys.modules.get(name + ".state")
     st = state.get() if state is not None else None
@@ -48,7 +48,7 @@ def exercise(name, label):
     check(len(st.registry.profiles) >= 6, "%s: built-in profiles (%d)" % (label, len(st.registry.profiles)))
     check(state.addon_version() == manifest_version(), "%s: version %r" % (label, state.addon_version()))
     n = len(bpy.data.objects)
-    r = bpy.ops.hjt_fbx_plus.import_files(filepath=SAMPLE, preview=False)
+    r = bpy.ops.hjt_fbx_plus.import_files(filepath=SAMPLE)
     rep = st.last_report
     check(r == {"FINISHED"} and rep is not None and rep["totals"]["ok"] > 0 and len(bpy.data.objects) > n,
           "%s: import %s" % (label, rep["summary"] if rep else r))
@@ -68,7 +68,7 @@ def main():
         try:
             idx = [x.module for x in bpy.context.preferences.extensions.repos].index("user_default")
             r = bpy.ops.extensions.package_uninstall(repo_index=idx, pkg_id="hjt_fbx_plus")
-            check(r == {"FINISHED"} and not hasattr(bpy.types, "HJTFBX_PT_import"), "extension: uninstall")
+            check(r == {"FINISHED"} and not hasattr(bpy.types, "HJTFBX_PT_main"), "extension: uninstall")
         except (RuntimeError, ValueError) as exc:
             check(False, "extension: uninstall (%s)" % exc)
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -81,7 +81,7 @@ def main():
     addon_utils.enable("hjt_fbx_plus", default_set=True, handle_error=lambda e: traceback.print_exc())
     exercise("hjt_fbx_plus", "legacy")
     addon_utils.disable("hjt_fbx_plus", default_set=True)
-    check(not hasattr(bpy.types, "HJTFBX_PT_import"), "legacy: disabled cleanly")
+    check(not hasattr(bpy.types, "HJTFBX_PT_main"), "legacy: disabled cleanly")
     #not preferences.addon_remove: it redraws an area that doesnt exist in background mode
     mod_dir = os.path.join(bpy.utils.user_resource("SCRIPTS", path="addons"), "hjt_fbx_plus")
     shutil.rmtree(mod_dir, ignore_errors=True)

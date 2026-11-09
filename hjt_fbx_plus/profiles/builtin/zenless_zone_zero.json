@@ -38,5 +38,5 @@
       {"name": "Outline", "pattern": "(?i)outline", "action": "HIDE"}
     ]
   },
-  "corrections": {"fit_bone_lengths": true, "verify_skinning": true}
+  "corrections": {"align_bone_chains": true, "fit_bone_lengths": true, "verify_skinning": true}
 }

@@ -12,7 +12,7 @@ from ..blender import compat
 
 
 def menu_import(self, context):
-    self.layout.operator("hjt_fbx_plus.import_files", text="HJT FBX+ (.fbx, .zip, .7z, .rar)")
+    self.layout.operator("hjt_fbx_plus.import_files", text="HJT FBX+ (.fbx, .uemodel, .zip, .7z, .rar)")
 
 
 CLASSES = []
@@ -22,7 +22,7 @@ if compat.HAS_FILE_HANDLER:
         bl_idname = "HJTFBX_FH_import"
         bl_label = "HJT FBX+"
         bl_import_operator = "hjt_fbx_plus.import_files"
-        bl_file_extensions = ".fbx;.zip;.7z;.rar"
+        bl_file_extensions = ".fbx;.uemodel;.zip;.7z;.rar"
 
         @classmethod
         def poll_drop(cls, context):

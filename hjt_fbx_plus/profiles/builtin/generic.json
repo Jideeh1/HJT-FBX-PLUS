@@ -13,5 +13,5 @@
       {"match": "(?i)(cutout|foliage|leaf|leaves|grass|lash|eyelash|hairtip|_cut$)", "settings": {"alpha_mode": "CLIP", "base_alpha_usage": "TRANSPARENCY"}}
     ]
   },
-  "corrections": {"fit_bone_lengths": false, "verify_skinning": true}
+  "corrections": {"align_bone_chains": false, "fit_bone_lengths": false, "verify_skinning": true}
 }

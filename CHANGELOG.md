@@ -2,6 +2,23 @@
 
 All notable changes to HJT FBX+ are documented here. The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-10
+
+### Added
+- UEModel import (`.uemodel`, UEFormat versions 0-10 as exported by FModel), loose or inside ZIP/7Z/RAR, uncompressed, GZIP or ZSTD. Meshes, all UV sets, vertex colors, custom normals, material sections, weights, morph targets and the skeleton, read on the worker thread.
+- Characters split into several `.uemodel` files (body, face, hair...) get an *all parts* entry in the archive picker that imports every part onto one shared armature.
+- FModel material JSON (`Textures` / `Parameters`) is read as a faithful material source, with UE parameter names mapped to texture slots and engine placeholder textures skipped.
+
+### Changed
+- The updater checks every release on github.com/Jideeh1/HJT-FBX-PLUS and offers the highest version, instead of only the release GitHub flags as Latest.
+- The import button is now *Import FBX/UEMODEL*, and the sidebar links to hjtstudio.com for more models.
+- Extracted models are always deleted when an import finishes and the archive's model list is cleared; the *Clean Up* keep options are gone.
+
+### Fixed
+- Clicking import after undoing an import re-imported the previous model instead of opening the file browser.
+- Bone chain alignment no longer turns half of a rig vertical. Bones with twist, pad or corrective children now pick the real chain child (on the bone's own axis, largest subtree), and forks and leaves follow their own local axis instead of copying the parent's world direction.
+- Re-aligning an aligned rig no longer shrinks root bones each time.
+
 ## [1.0.0] - 2026-11-04
 
 First release.

@@ -2,7 +2,7 @@
 # HJT FBX+ - Advanced FBX & Game Asset Importer
 # Copyright (C) 2026 HJT Studio
 
-#import operators: the file browser one (also drag n drop), add folder, n the modal batch import
+#import operators: pick 1 fbx or 1 archive (file browser or drag n drop) -> the modal import runs 1 model
 
 from __future__ import annotations
 
@@ -14,48 +14,162 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProp
 from bpy_extras.io_utils import ImportHelper
 
 from ... import state
+from ...archives import is_archive_path
 from ...blender import compat, engines, images as img_mod, pipeline
 from ...blender.report import RunReport
 from ...core.log import Diagnostics, log
+from ...uemodel import ALL_PARTS
 from .. import sync
 from ..props import profile_items, snapshot
 
-FILTER = "*.fbx;*.zip;*.7z;*.rar;*.001"
+FILTER = "*.fbx;*.uemodel;*.zip;*.7z;*.rar;*.001"
 NAV_EVENTS = {"MOUSEMOVE", "INBETWEEN_MOUSEMOVE", "MIDDLEMOUSE", "WHEELUPMOUSE", "WHEELDOWNMOUSE", "TRACKPADPAN",
               "TRACKPADZOOM", "TIMER_REPORT", "WINDOW_DEACTIVATE"}
+LISTING_TIMEOUT = 180.0
 
 
 def _addon_version():
     return state.addon_version()
 
 
+def _ctx_override():
+    #timers have no window/area in context. grab a 3d view so modal ops n popups have somewhere to live
+    wm = bpy.context.window_manager
+    for win in wm.windows:
+        scr = win.screen
+        if scr is None:
+            continue
+        for area in scr.areas:
+            if area.type == "VIEW_3D":
+                region = next((r for r in area.regions if r.type == "WINDOW"), None)
+                return {"window": win, "screen": scr, "area": area, "region": region}
+    return {"window": wm.windows[0]} if wm.windows else {}
+
+
+def _popup(title, lines, icon="ERROR"):
+    def draw(menu, _context):
+        for ln in lines:
+            menu.layout.label(text=ln)
+    try:
+        with bpy.context.temp_override(**_ctx_override()):
+            bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
+    except Exception:  # noqa: BLE001
+        log.warning("%s: %s", title, " ".join(lines))
+
+
+def _start_one(st, model_key):
+    #only this model gets imported. everything else in the archive stays unchecked
+    for m in st.session.models.values():
+        m.selected = m.key == model_key
+    st.session.changed()
+    with bpy.context.temp_override(**_ctx_override()):
+        bpy.ops.hjt_fbx_plus.run("INVOKE_DEFAULT")
+
+
+def _rank(models, archive_path):
+    #best guess first: same name as the archive > character model looking names > biggest file
+    base = os.path.splitext(os.path.basename(archive_path))[0].lower()
+
+    def score(m):
+        name = m.label.lower()
+        return ((m.member or "").endswith(ALL_PARTS), name == base, base in name or name in base, "avatar" in name or "_ui" in name or "model" in name, m.size)
+    return sorted(models, key=score, reverse=True)
+
+
+def watch_archive(path, member=""):
+    #polls until the background thread finished reading the archive, then: 1 fbx -> import it,
+    # several -> ask which one, password -> ask for it. timers ftw, no blocking the ui
+    path = os.path.abspath(path)
+    t0 = time.monotonic()
+
+    def tick():
+        st = state.get()
+        if st is None or st.batch is not None:
+            return None
+        src = st.session.sources.get(path)
+        if src is None:
+            return None
+        wm = bpy.context.window_manager.hjt_fbx_plus
+        if src.status in ("PENDING", "LISTING"):
+            if time.monotonic() - t0 > LISTING_TIMEOUT:
+                wm.status_text = ""
+                _popup("HJT FBX+", ["Reading %s took too long" % src.label])
+                return None
+            wm.status_text = "Reading %s..." % src.label
+            return 0.15
+        wm.status_text = ""
+        if src.status == "LOCKED":
+            with bpy.context.temp_override(**_ctx_override()):
+                bpy.ops.hjt_fbx_plus.archive_password("INVOKE_DEFAULT", path=path, member=member,
+                                                      retry=src.message.startswith("Wrong"))
+            return None
+        if src.status == "ERROR":
+            _popup("Can't open %s" % src.label, [ln for ln in _wrap_text(src.message or "Unknown error", 70)])
+            return None
+        models = [m for m in st.session.models.values() if m.source_key == src.key]
+        if not models:
+            _popup(src.label, ["No FBX or UEModel files in this archive"], icon="INFO")
+            return None
+        if member:
+            hit = next((m for m in models if m.member == member), None)
+            if hit is not None:
+                _start_one(st, hit.key)
+                return None
+        if len(models) == 1:
+            _start_one(st, models[0].key)
+            return None
+        with bpy.context.temp_override(**_ctx_override()):
+            bpy.ops.hjt_fbx_plus.pick_model("INVOKE_DEFAULT", path=path)
+        return None
+
+    bpy.app.timers.register(tick, first_interval=0.1)
+
+
+def _wrap_text(text, width):
+    out, cur = [], ""
+    for w in (text or "").split():
+        if cur and len(cur) + len(w) + 1 > width:
+            out.append(cur)
+            cur = w
+        else:
+            cur = (cur + " " + w).strip()
+    if cur:
+        out.append(cur)
+    return out[:6] or [""]
+
+
 class HJTFBX_OT_import(bpy.types.Operator, ImportHelper):
+    #1 model in, 1 model out. loose fbx or an fbx inside a zip / 7z / rar. no queue no folder scanning
     bl_idname = "hjt_fbx_plus.import_files"
-    bl_label = "HJT FBX+"
-    bl_description = "Import FBX files or ZIP / 7Z / RAR archives containing FBX models with HJT FBX+"
+    bl_label = "Import FBX/UEMODEL"
+    bl_description = "Import one FBX or UEModel, or one model from a ZIP / 7Z / RAR archive, with HJT FBX+"
     bl_options = {"REGISTER", "UNDO", "PRESET"}
 
     filename_ext = ".fbx"
+    #SKIP_SAVE or blender remembers the last file n invoke() below thinks its a drag n drop. that was the
+    # "undo, click import, same model again" bug lol
+    filepath: StringProperty(subtype="FILE_PATH", options={"SKIP_SAVE"})
     filter_glob: StringProperty(default=FILTER, options={"HIDDEN"})
-    files: CollectionProperty(type=bpy.types.OperatorFileListElement, options={"HIDDEN", "SKIP_SAVE"})
-    directory: StringProperty(subtype="DIR_PATH", options={"HIDDEN", "SKIP_SAVE"})
-    preview: BoolProperty(name="Preview Before Import", default=True,
-                          description="Add the files to the HJT FBX+ queue (3D View sidebar) so you can inspect and pick models first")
     profile: EnumProperty(name="Game Profile", items=profile_items,
                           description="Game profile for texture discovery and material reconstruction")
     password: StringProperty(name="Archive Password", subtype="PASSWORD", options={"SKIP_SAVE"},
-                             description="Password for encrypted archives (kept in memory only)")
+                             description="Only for encrypted archives (kept in memory, never saved)")
+    member: StringProperty(options={"HIDDEN", "SKIP_SAVE"})  #path inside the archive, skips the picker
+
+    @classmethod
+    def poll(cls, context):
+        st = state.get()
+        return st is not None and st.batch is None
 
     def invoke(self, context, event):
-        st = state.get()
         try:
             self.profile = context.scene.hjt_fbx_plus.profile
         except (TypeError, AttributeError):
             pass
-        if self.filepath or self.files:
-            #came from drag n drop (FileHandler), ask the 2 questions that matter then go
-            return context.window_manager.invoke_props_dialog(self, width=360)
-        return ImportHelper.invoke(self, context, event) if st is not None else {"CANCELLED"}
+        if self.filepath:
+            #dropped on the viewport. u already picked the file, no dialog, just go
+            return self.execute(context)
+        return ImportHelper.invoke(self, context, event)
 
     def draw(self, context):
         layout = self.layout
@@ -63,82 +177,126 @@ class HJTFBX_OT_import(bpy.types.Operator, ImportHelper):
         col.use_property_split = True
         col.use_property_decorate = False
         col.prop(self, "profile")
-        col.prop(self, "preview")
+        s = context.scene.hjt_fbx_plus
+        col.prop(s, "align_chains")
+        col.prop(s, "material_mode")
+        col.separator()
         col.prop(self, "password")
-        box = layout.box()
-        box.label(text="All options: 3D View > Sidebar > HJT FBX+", icon="INFO")
-
-    def _paths(self):
-        out = []
-        if self.files and any(f.name for f in self.files):
-            for f in self.files:
-                if f.name:
-                    out.append(os.path.join(self.directory or os.path.dirname(self.filepath), f.name))
-        elif self.filepath:
-            out.append(self.filepath)
-        return [p for p in out if os.path.exists(p)]
+        layout.label(text="All options: 3D View > Sidebar > HJT FBX+", icon="INFO")
 
     def execute(self, context):
         st = state.get()
         if st is None:
             self.report({"ERROR"}, "HJT FBX+ is not initialized")
             return {"CANCELLED"}
-        paths = self._paths()
-        if not paths:
-            self.report({"WARNING"}, "Nothing to import")
+        path = bpy.path.abspath(self.filepath)
+        if not path or not os.path.isfile(path):
+            self.report({"WARNING"}, "Pick an .fbx, .uemodel, .zip, .7z or .rar file")
+            return {"CANCELLED"}
+        is_fbx = path.lower().endswith((".fbx", ".uemodel"))
+        if not is_fbx and not is_archive_path(path):
+            self.report({"WARNING"}, "HJT FBX+ imports .fbx / .uemodel files or .zip / .7z / .rar archives")
             return {"CANCELLED"}
         settings = context.scene.hjt_fbx_plus
         if self.profile and self.profile != settings.profile:
             settings.profile = self.profile
-        opts = snapshot(settings)
-        #direct import parses everything in prepare anyway, analyzing too would just do it twice
-        st.session.add_paths(paths, password=self.password or None, auto_analyze=self.preview and state.auto_analyze(),
-                             options=opts)
-        _reveal_sidebar(context)
-        if self.preview:
-            self.report({"INFO"}, "Added to the HJT FBX+ queue - review the models in the sidebar, then press Import")
-            return {"FINISHED"}
-        #no preview: import exactly what was picked, even if it was in the queue already (or imported
-        # before). archives list in the background, the batch waits for their models to show up
-        bpy.ops.hjt_fbx_plus.run("INVOKE_DEFAULT", sources="\n".join(sorted({os.path.abspath(p) for p in paths})))
+        st.session.clear()  #fresh every time, nothing piles up between imports
+        st.session.add_paths([path], password=self.password or None, auto_analyze=False, options=snapshot(settings))
+        wm = context.window_manager.hjt_fbx_plus
+        if is_fbx:
+            bpy.ops.hjt_fbx_plus.run("INVOKE_DEFAULT", sources=os.path.abspath(path))
+        else:
+            wm.status_text = "Reading %s..." % os.path.basename(path)
+            watch_archive(path, self.member)
         return {"FINISHED"}
 
 
-def _reveal_sidebar(context):
-    try:
-        for area in context.screen.areas:
-            if area.type == "VIEW_3D":
-                area.spaces.active.show_region_ui = True
-                for region in area.regions:
-                    if region.type == "UI" and hasattr(region, "active_panel_category"):
-                        try:
-                            region.active_panel_category = "HJT FBX+"
-                        except (TypeError, AttributeError, ValueError):
-                            pass
-                break
-    except AttributeError:
-        pass
+def _model_items(self, context):
+    #dynamic enum strings MUST outlive the call or blender shows garbage (saw the same model twice lmao)
+    # so the list is only rebuilt when the archive or its models change
+    st = state.get()
+    path = os.path.abspath(self.path)
+    models = [m for m in st.session.models.values() if m.source_key == path] if st is not None else []
+    key = (path, tuple(m.key for m in models))
+    if _model_items_cache.get("key") == key:
+        return _model_items_cache["items"]
+    items = []
+    for i, m in enumerate(_rank(models, self.path)):
+        where = os.path.dirname(m.member or "")
+        desc = "%s  (%s)" % (m.member or m.label, _size(m.size))
+        items.append((m.key, m.label + (("   - " + where) if where else ""), desc, "FILE_3D", i))
+    _model_items_cache["key"] = key
+    _model_items_cache["items"] = items or [("NONE", "No models", "", "ERROR", 0)]
+    return _model_items_cache["items"]
 
 
-class HJTFBX_OT_add_folder(bpy.types.Operator, ImportHelper):
-    bl_idname = "hjt_fbx_plus.add_folder"
-    bl_label = "Add Folder"
-    bl_description = "Scan a folder (and its subfolders) for FBX files and archives and add them to the queue"
-    bl_options = {"REGISTER"}
+_model_items_cache = {}
 
-    filename_ext = ""
-    use_filter_folder = True
-    directory: StringProperty(subtype="DIR_PATH")
-    filter_glob: StringProperty(default=FILTER, options={"HIDDEN"})
+
+def _size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return ("%d %s" % (n, unit)) if unit == "B" else ("%.1f %s" % (n, unit))
+        n /= 1024.0
+    return ""
+
+
+class HJTFBX_OT_pick_model(bpy.types.Operator):
+    bl_idname = "hjt_fbx_plus.pick_model"
+    bl_label = "Pick a Model"
+    bl_description = "The archive has more than one model, pick the one to import"
+    bl_options = {"INTERNAL"}
+
+    path: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    choice: EnumProperty(name="Model", items=_model_items)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=460, title="%s has several models" % os.path.basename(self.path),
+                                                          confirm_text="Import")
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.prop(self, "choice", expand=True)
 
     def execute(self, context):
         st = state.get()
-        d = self.directory or os.path.dirname(self.filepath)
-        if not d or not os.path.isdir(d):
-            self.report({"ERROR"}, "Pick a folder")
+        if st is None or self.choice in ("", "NONE"):
             return {"CANCELLED"}
-        added = st.session.add_folder(d, auto_analyze=state.auto_analyze(), options=snapshot(context.scene.hjt_fbx_plus))
-        self.report({"INFO"}, "Scanning %s (%d FBX added, archives are read in the background)" % (os.path.basename(d.rstrip("/\\")), len(added)))
+        _start_one(st, self.choice)
+        return {"FINISHED"}
+
+
+class HJTFBX_OT_archive_password(bpy.types.Operator):
+    bl_idname = "hjt_fbx_plus.archive_password"
+    bl_label = "Archive Password"
+    bl_description = "This archive is encrypted"
+    bl_options = {"INTERNAL"}
+
+    path: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    member: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    retry: BoolProperty(options={"HIDDEN", "SKIP_SAVE"})
+    password: StringProperty(name="Password", subtype="PASSWORD", options={"SKIP_SAVE"})
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=340, title="%s is encrypted" % os.path.basename(self.path),
+                                                          confirm_text="Unlock")
+
+    def draw(self, context):
+        col = self.layout.column()
+        if self.retry:
+            r = col.row()
+            r.alert = True
+            r.label(text="Wrong password, try again", icon="ERROR")
+        col.activate_init = True
+        col.prop(self, "password", text="")
+
+    def execute(self, context):
+        st = state.get()
+        if st is None or not self.password:
+            return {"CANCELLED"}
+        st.session.unlock(os.path.abspath(self.path), self.password, auto_analyze=False,
+                          options=snapshot(context.scene.hjt_fbx_plus))
+        watch_archive(self.path, self.member)
         return {"FINISHED"}
 
 
@@ -152,8 +310,8 @@ def _belongs(source_key, picked):
 
 class HJTFBX_OT_run(bpy.types.Operator):
     bl_idname = "hjt_fbx_plus.run"
-    bl_label = "Import Selected"
-    bl_description = "Import every checked model in the queue (Esc cancels after the current model)"
+    bl_label = "Import"
+    bl_description = "Run the import (Esc cancels)"
     bl_options = {"REGISTER", "UNDO"}
 
     sources: StringProperty(options={"HIDDEN", "SKIP_SAVE"})  #newline separated paths: import just these
@@ -179,7 +337,7 @@ class HJTFBX_OT_run(bpy.types.Operator):
         self.queue = []
         self._refill()
         if not self.queue and not self._waiting_for_listing():
-            self.report({"WARNING"}, "No models are checked for import")
+            self.report({"WARNING"}, "Nothing to import")
             return {"CANCELLED"}
         self.total = max(1, len(self.queue))
         self.index = 0
@@ -291,7 +449,7 @@ class HJTFBX_OT_run(bpy.types.Operator):
             pending = [m for m in self.queue if m.key not in self.done_keys]
             if not pending:
                 if self._waiting_for_listing():
-                    self._status(context, "Waiting for archives to be read...")
+                    self._status(context, "Reading archive...")
                     return {"RUNNING_MODAL"}
                 return self._finish(context)
             self.total = max(self.total, len(self.done_keys) + len(pending))
@@ -423,8 +581,10 @@ class HJTFBX_OT_run(bpy.types.Operator):
             context.workspace.status_text_set(None)
         except AttributeError:
             pass
-        if st.cache.policy == "AFTER_IMPORT":
-            st.cache.release_files(self.extracted)
+        #nothing from the model stays behind: extracted files, prepared copies, the archive's model list
+        st.cache.release_files(self.extracted)
+        st.cache.cleanup_session()
+        st.session.clear()
         self.run_report.finish(self.cancelled)
         d = self.run_report.to_dict()
         st.last_report = d
@@ -470,4 +630,4 @@ class HJTFBX_OT_cancel(bpy.types.Operator):
         return {"FINISHED"}
 
 
-CLASSES = (HJTFBX_OT_import, HJTFBX_OT_add_folder, HJTFBX_OT_run, HJTFBX_OT_cancel)
+CLASSES = (HJTFBX_OT_import, HJTFBX_OT_pick_model, HJTFBX_OT_archive_password, HJTFBX_OT_run, HJTFBX_OT_cancel)

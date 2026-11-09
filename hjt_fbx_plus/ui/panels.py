@@ -3,20 +3,29 @@
 # Copyright (C) 2026 HJT Studio
 
 #3d view sidebar, tab "HJT FBX+"
-#  Import / Game Profiles / Material Reconstruction / Advanced Settings / Archive Management / Import Diagnostics
-# draw code reads cached state only, never parses or scans anything (drawing happens a LOT)
+#  HJT FBX+    big import button (fbx or 1 model from a zip/7z/rar), live progress, update banner, options
+#  Selected    changes w whatever u clicked: armature -> chain health + fix, mesh -> material tools
+#  Game Profiles / Diagnostics
+#
+#5.2 goodies used when they exist: layout.panel() fold-outs w header toggles, progress RING, LINE
+# separators. older blenders get plain boxes. draw code reads cached state only, NEVER scans or
+#parses anything, draw runs like 60 times a sec when u wiggle the mouse
 
 from __future__ import annotations
 
 import bpy
 
 from .. import state
-from ..blender import compat
+from ..blender import chains, compat, updater
 from ..blender.materials import META_PROP
-from . import sync
-from .lists import human_size
+from . import prefs as prefs_mod
 
 CATEGORY = "HJT FBX+"
+_HAS_SEP_TYPE = False
+try:
+    _HAS_SEP_TYPE = "type" in bpy.types.UILayout.bl_rna.functions["separator"].parameters
+except Exception:  # noqa: BLE001
+    pass
 
 
 class _Base:
@@ -40,126 +49,47 @@ def _split(layout):
     return col
 
 
-class HJTFBX_PT_import(_Base, bpy.types.Panel):
-    bl_label = "Import"
-    bl_order = 0
-
-    def draw_header(self, context):
-        self.layout.label(text="", icon="IMPORT")
-
-    def draw(self, context):
-        layout = self.layout
-        st = state.get()
-        s = context.window_manager.hjt_fbx_plus
-        brand = layout.box()
-        col = brand.column(align=True)
-        col.label(text="HJT FBX+", icon="OUTLINER_OB_ARMATURE")
-        sub = col.column(align=True)
-        sub.scale_y = 0.75
-        sub.label(text="Advanced FBX & Game Asset Importer")
-        sub.label(text="By HJT Studio")
-
-        row = layout.row(align=True)
-        row.scale_y = 1.3
-        row.operator("hjt_fbx_plus.import_files", text="Add FBX / Archive", icon="FILEBROWSER")
-        row.operator("hjt_fbx_plus.add_folder", text="", icon="FILE_FOLDER")
-        layout.prop(_settings(context), "profile", text="Profile")
-
-        if not s.models:
-            box = layout.box()
-            col = box.column(align=True)
-            col.scale_y = 0.8
-            col.label(text="Add .fbx files or .zip / .7z / .rar", icon="INFO")
-            col.label(text="archives. Models are listed here for")
-            col.label(text="preview before importing.")
-            if compat.HAS_FILE_HANDLER:
-                col.label(text="You can also drop files on the viewport.")
-            if s.status_text:
-                layout.label(text=s.status_text, icon="SORTTIME")
-            return
-
-        layout.template_list("HJTFBX_UL_models", "", s, "models", s, "models_index", rows=5)
-        row = layout.row(align=True)
-        row.operator_menu_enum("hjt_fbx_plus.select", "mode", text="Select", icon="CHECKBOX_HLT")
-        row.operator("hjt_fbx_plus.analyze", text="", icon="FILE_REFRESH").scope = "SELECTED"
-        row.operator("hjt_fbx_plus.remove", text="", icon="REMOVE").scope = "ACTIVE"
-        row.operator("hjt_fbx_plus.clear", text="", icon="TRASH")
-
-        if s.models_index < len(s.models):
-            _draw_model_details(layout, st, s.models[s.models_index])
-
+def _line(layout):
+    if _HAS_SEP_TYPE:
+        layout.separator(type="LINE")
+    else:
         layout.separator()
-        n = sum(1 for m in s.models if m.selected)
-        if s.running:
-            compat.draw_progress(layout, s.progress, s.status_text or "Importing...")
-            layout.label(text="Press Esc to cancel after the current step", icon="CANCEL")
+
+
+def _section(layout, idname, title, icon="NONE", closed=True, toggle=None, chip=""):
+    #fold-out section. toggle=(data, prop) puts a checkbox in the header n greys the body when off
+    # returns (body or None, enabled)
+    if compat.HAS_LAYOUT_PANEL:
+        header, body = layout.panel("hjt_" + idname, default_closed=closed)
+        row = header.row(align=True)
+        if toggle is not None:
+            row.prop(toggle[0], toggle[1], text="")
+            row.label(text=title, icon=icon)
         else:
-            row = layout.row()
-            row.scale_y = 1.6
-            row.enabled = n > 0
-            row.operator("hjt_fbx_plus.run", text="Import %d Model%s" % (n, "" if n == 1 else "s"), icon="IMPORT")
-            if s.status_text:
-                r = layout.row()
-                r.label(text=s.status_text, icon="SORTTIME")
-                r.operator("hjt_fbx_plus.cancel", text="", icon="X")
-        if s.last_summary:
-            r = layout.row()
-            r.label(text=s.last_summary, icon="CHECKMARK")
-            r.operator("hjt_fbx_plus.report_open", text="", icon="TEXT")
-
-
-def _draw_model_details(layout, st, item):
-    m = st.session.models.get(item.key)
-    if m is None:
-        return
+            row.label(text=title, icon=icon)
+        if chip:
+            c = header.row()
+            c.alignment = "RIGHT"
+            c.label(text=chip)
+        on = True if toggle is None else bool(getattr(toggle[0], toggle[1]))
+        if body is not None:
+            body.active = on
+        return body, on
     box = layout.box()
-    col = box.column(align=True)
-    src = st.session.sources.get(m.source_key)
-    col.label(text=m.member or m.path, icon="FILE_3D")
-    if src is not None and src.is_archive:
-        col.label(text="in %s (%s)" % (src.label, src.backend or src.kind), icon="FILE_ARCHIVE")
-    if m.status == "ANALYZING":
-        col.label(text="Analyzing...", icon="SORTTIME")
-        return
-    if m.status == "ERROR" and not m.summary:
-        for line in _wrap(m.message, 48):
-            col.label(text=line, icon="CANCEL")
-        return
-    if not m.summary:
-        col.label(text=m.message or "Not analyzed yet")
-        if m.status == "PENDING":
-            col.operator("hjt_fbx_plus.analyze", text="Analyze", icon="VIEWZOOM").scope = "ACTIVE"
-        return
-    sm = m.summary
-    c = sm["counts"]
-    hdr = sm.get("header", {})
-    grid = box.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
-    grid.label(text="Meshes: %d" % c["meshes"], icon="MESH_DATA")
-    grid.label(text="Materials: %d" % c["materials"], icon="MATERIAL")
-    grid.label(text="Bones: %d" % c["bones"], icon="BONE_DATA")
-    grid.label(text="Animations: %d" % c["anim_stacks"], icon="ACTION")
-    grid.label(text="Vertices: %s" % format(sm["geometry"]["vertices"], ","), icon="VERTEXSEL")
-    grid.label(text="Shape keys: %d" % c["shape_channels"], icon="SHAPEKEY_DATA")
-    col = box.column(align=True)
-    col.label(text="FBX %s %d  -  %s" % (sm["format"], sm["version"], hdr.get("creator", "unknown creator")[:40]), icon="INFO")
-    p = st.registry.profiles.get(m.profile_id)
-    if p is not None:
-        col.label(text="Profile: %s%s" % (p.name, " (auto)" if m.profile_scores else ""), icon="PRESET")
-    col.label(text="Textures: %d faithful, %d inferred, %d missing" % (m.textures_faithful, m.textures_inferred, m.textures_missing),
-              icon="TEXTURE" if not m.textures_missing else "ERROR")
-    issues = [i for i in sm.get("issues", []) if i["level"] in ("warning", "error")]
-    plan_warn = [w for pl in m.plans for w in pl.warnings][:4]
-    if issues or plan_warn:
-        ib = box.column(align=True)
-        for i in issues[:4]:
-            for k, line in enumerate(_wrap(i["message"], 52)):
-                ib.label(text=line, icon="ERROR" if k == 0 else "BLANK1")
-        for w in plan_warn:
-            for k, line in enumerate(_wrap(w, 52)):
-                ib.label(text=line, icon="TEXTURE" if k == 0 else "BLANK1")
-    anims = sm.get("animations", [])
-    if anims:
-        box.label(text="Clips: " + ", ".join(a["name"] for a in anims[:4]) + (" ..." if len(anims) > 4 else ""), icon="ACTION")
+    row = box.row(align=True)
+    if toggle is not None:
+        row.prop(toggle[0], toggle[1], text="")
+    row.label(text=title + (("  -  " + chip) if chip else ""), icon=icon)
+    on = True if toggle is None else bool(getattr(toggle[0], toggle[1]))
+    box.active = on
+    return box, on
+
+
+def _enum_name(data, prop):
+    try:
+        return data.bl_rna.properties[prop].enum_items[getattr(data, prop)].name
+    except (KeyError, AttributeError):
+        return ""
 
 
 def _wrap(text, width):
@@ -177,9 +107,311 @@ def _wrap(text, width):
     return lines[:6] or [""]
 
 
+def _wrap_for(context, text):
+    #wrap to whatever the sidebar is right now. wider sidebar = longer lines, its the little things
+    width = 260
+    region = getattr(context, "region", None)
+    if region is not None:
+        width = region.width
+    scale = max(0.5, context.preferences.system.ui_scale)
+    return _wrap(text, max(18, int(width / (7.0 * scale))))
+
+
+def _active_profile(context):
+    st = state.get()
+    s = _settings(context)
+    if s.profile == "AUTO":
+        return None
+    return st.registry.profiles.get(s.profile) if st is not None else None
+
+
+def _profile_wants(context, key):
+    p = _active_profile(context)
+    if p is None:
+        return None  #auto: decided per file
+    return bool(p.corrections.get(key, False))
+
+
+class HJTFBX_PT_main(_Base, bpy.types.Panel):
+    bl_label = "HJT FBX+"
+    bl_order = 0
+
+    def draw_header(self, context):
+        self.layout.label(text="", icon="OUTLINER_OB_ARMATURE")
+
+    def draw_header_preset(self, context):
+        st = updater.STATUS
+        row = self.layout.row(align=True)
+        if st.state in ("AVAILABLE", "READY"):
+            row.alert = True
+            row.operator("hjt_fbx_plus.update_install", text=st.latest, icon="IMPORT", emboss=False)
+        elif st.state == "INSTALLED":
+            row.alert = True
+            row.label(text="restart", icon="FILE_REFRESH")
+        else:
+            row.label(text=state.addon_version())
+
+    def draw(self, context):
+        layout = self.layout
+        wm = context.window_manager.hjt_fbx_plus
+        s = _settings(context)
+        st = state.get()
+
+        if updater.STATUS.state in ("AVAILABLE", "READY", "DOWNLOADING", "INSTALLED"):
+            prefs_mod.draw_update_block(layout, updater)
+
+        if wm.running:
+            box = layout.box()
+            compat.draw_progress(box, wm.progress, wm.status_text or "Importing...")
+            r = box.row()
+            r.active = False
+            r.label(text="Esc cancels after the current step", icon="CANCEL")
+        else:
+            col = layout.column(align=True)
+            r = col.row(align=True)
+            r.scale_y = 1.8
+            r.operator("hjt_fbx_plus.import_files", text="Import FBX/UEMODEL", icon="IMPORT")
+            if wm.status_text:
+                #archive still being read in the background
+                compat.draw_progress(col, 0.5, wm.status_text, ring=True)
+
+        col = layout.column(align=True)
+        col.prop(s, "profile", text="", icon="PRESET")
+        p = _active_profile(context)
+        if p is not None and p.description:
+            sub = col.column(align=True)
+            sub.scale_y = 0.75
+            sub.active = False
+            for line in _wrap_for(context, p.description)[:2]:
+                sub.label(text=line)
+
+        #quick strip, the 2 things u actually change per model
+        g = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+        g.prop(s, "align_chains", text="", icon="BONE_DATA")
+        g.prop(s, "material_mode", text="", icon="MATERIAL")
+
+        if wm.last_summary and not wm.running:
+            _draw_last_result(layout, st, wm)
+
+        _line(layout)
+        self._options(context, layout, s)
+        _line(layout)
+        layout.operator("wm.url_open", text="Get More Models at hjtstudio.com", icon="URL").url = "https://hjtstudio.com"
+
+    def _options(self, context, layout, s):
+        body, _ = _section(layout, "mats", "Materials & Textures", "MATERIAL", chip=_enum_name(s, "material_mode"))
+        if body:
+            c = _split(body)
+            c.prop(s, "material_mode")
+            if s.material_mode == "TEMPLATE":
+                c.prop_search(s, "template_material", bpy.data, "materials")
+                if s.template_material and s.template_material not in bpy.data.materials:
+                    w = c.row()
+                    w.alert = True
+                    w.label(text="Material not found in this file", icon="ERROR")
+            c.separator()
+            c.prop(s, "use_fbx_references")
+            c.prop(s, "use_material_json")
+            c.prop(s, "name_matching")
+            sub = c.column(align=True)
+            sub.active = s.name_matching
+            sub.prop(s, "search_depth")
+            sub.prop(s, "search_parent_levels")
+            c.separator()
+            c.prop(s, "texture_storage")
+            if s.texture_storage == "COPY":
+                c.prop(s, "copy_dir")
+            c.prop(s, "reuse_images")
+
+        wants = _profile_wants(context, "align_bone_chains")
+        will_align = s.align_chains == "ON" or (s.align_chains == "PROFILE" and wants is not False)
+        chip = {"ON": "Align", "OFF": "Off"}.get(s.align_chains, "Auto" if wants is None else ("Align" if wants else "Off"))
+        body, _ = _section(layout, "arm", "Armature", "ARMATURE_DATA", chip=chip)
+        if body:
+            c = _split(body)
+            c.prop(s, "align_chains")
+            if s.align_chains == "PROFILE":
+                info = c.row()
+                info.active = False
+                info.label(text={None: "Follows the detected game profile", True: "This profile aligns chains",
+                                 False: "This profile keeps importer bones"}[wants], icon="INFO")
+            fit = c.row()
+            fit.active = not will_align
+            fit.prop(s, "fit_bones")
+            if will_align:
+                n = c.row()
+                n.active = False
+                n.label(text="Chain alignment already sizes bones", icon="CHECKMARK")
+            c.prop(s, "verify_skinning")
+            c.prop(s, "ignore_leaf_bones")
+            py = s.engine != "CPP"
+            sub = c.column()
+            sub.active = py
+            sub.prop(s, "force_connect_children")
+            sub.prop(s, "automatic_bone_orientation")
+            ax = sub.column(align=True)
+            ax.active = py and not s.automatic_bone_orientation
+            ax.prop(s, "primary_bone_axis")
+            ax.prop(s, "secondary_bone_axis")
+            sub.prop(s, "use_prepost_rot")
+            if not py:
+                w = c.row()
+                w.active = False
+                w.label(text="C++ engine ignores these", icon="INFO")
+
+        body, on = _section(layout, "anim", "Animation", "ACTION", toggle=(s, "use_anim"))
+        if body:
+            c = _split(body)
+            c.prop(s, "anim_offset")
+
+        body, _ = _section(layout, "geo", "Geometry & Data", "MESH_DATA")
+        if body:
+            c = _split(body)
+            c.prop(s, "global_scale")
+            for k in ("use_custom_normals", "colors_type", "keep_tangents", "use_custom_props", "use_subsurf"):
+                c.prop(s, k)
+            c.prop(s, "split_inbetweens")
+            r = c.row()
+            r.active = s.split_inbetweens
+            r.prop(s, "inbetween_drivers")
+
+        body, on = _section(layout, "orient", "Orientation", "ORIENTATION_GLOBAL", toggle=(s, "use_manual_orientation"))
+        if body:
+            c = _split(body)
+            c.active = on and s.engine != "CPP"
+            c.prop(s, "axis_forward")
+            c.prop(s, "axis_up")
+            c.prop(s, "bake_space_transform")
+            if s.axis_forward[-1] == s.axis_up[-1]:
+                w = body.row()
+                w.alert = True
+                w.label(text="Forward and Up can't use the same axis", icon="ERROR")
+
+        body, _ = _section(layout, "org", "Scene Organization", "OUTLINER_COLLECTION")
+        if body:
+            c = _split(body)
+            for k in ("organize", "group_by_category", "handle_lods", "handle_collision", "tag_metadata"):
+                c.prop(s, k)
+
+        body, _ = _section(layout, "engine", "Engine & Presets", "PREFERENCES", chip=_enum_name(s, "engine"))
+        if body:
+            r = body.row(align=True)
+            r.menu("HJTFBX_MT_presets", text="Presets", icon="PRESET")
+            r.operator("hjt_fbx_plus.preset_add", text="", icon="ADD")
+            r.operator("hjt_fbx_plus.preset_add", text="", icon="REMOVE").remove_active = True
+            c = _split(body)
+            c.prop(s, "engine")
+            c.prop(s, "apply_profile_import")
+            if s.engine == "CPP" and bpy.app.version < (4, 5, 0):
+                w = c.row()
+                w.alert = True
+                w.label(text="C++ importer needs Blender 4.5+", icon="ERROR")
+
+
+def _draw_last_result(layout, st, wm):
+    rep = st.last_report if st is not None else None
+    t = (rep or {}).get("totals", {})
+    failed = t.get("failed", 0)
+    warn = t.get("warnings", 0)
+    box = layout.box()
+    r = box.row(align=True)
+    r.alert = bool(failed)
+    r.label(text=wm.last_summary, icon="ERROR" if failed else ("INFO" if warn else "CHECKMARK"))
+    r.operator("hjt_fbx_plus.report_open", text="", icon="TEXT")
+    models = (rep or {}).get("models", [])
+    if models:
+        m = models[-1]
+        sub = box.column(align=True)
+        sub.scale_y = 0.8
+        sub.active = False
+        stats = m.get("stats", {})
+        bits = []
+        if m.get("profile"):
+            bits.append(m["profile"].replace("_", " ").title())
+        if stats.get("bones"):
+            bits.append("%d bones" % stats["bones"])
+        if stats.get("materials"):
+            bits.append("%d materials" % stats["materials"])
+        if bits:
+            sub.label(text="  ·  ".join(bits))
+        if m.get("error"):
+            for line in _wrap(m["error"], 44)[:3]:
+                e = box.row()
+                e.alert = True
+                e.label(text=line)
+
+
+class HJTFBX_PT_selected(_Base, bpy.types.Panel):
+    bl_label = "Selected"
+    bl_order = 1
+
+    @classmethod
+    def poll(cls, context):
+        return _Base.poll(context) and context.active_object is not None and context.active_object.type in ("ARMATURE", "MESH")
+
+    def draw_header(self, context):
+        ob = context.active_object
+        self.layout.label(text="", icon="OUTLINER_OB_ARMATURE" if ob.type == "ARMATURE" else "OUTLINER_OB_MESH")
+
+    def draw_header_preset(self, context):
+        self.layout.label(text=context.active_object.name[:22])
+
+    def draw(self, context):
+        layout = self.layout
+        ob = context.active_object
+        arm = ob if ob.type == "ARMATURE" else ob.find_armature()
+        if arm is not None:
+            self._armature(context, layout, arm)
+        if ob.type == "MESH":
+            if arm is not None:
+                _line(layout)
+            self._materials(context, layout, ob)
+
+    def _armature(self, context, layout, arm):
+        good, total = chains.chain_health(arm)
+        frac = (good / float(total)) if total else 1.0
+        col = layout.column(align=True)
+        col.label(text="%s  -  %d bones" % (arm.name, len(arm.data.bones)), icon="ARMATURE_DATA")
+        if total:
+            compat.draw_progress(col, frac, "%d / %d bones on their chain" % (good, total))
+        r = layout.row()
+        r.scale_y = 1.3
+        r.alert = frac < 0.6
+        r.operator("hjt_fbx_plus.align_chains", text="Align Bone Chains" if frac < 0.95 else "Re-align Chains", icon="BONE_DATA")
+        if arm.animation_data and (arm.animation_data.action or arm.animation_data.nla_tracks):
+            n = layout.row()
+            n.active = False
+            n.label(text="Animation is kept, keys get re-expressed", icon="ACTION")
+
+    def _materials(self, context, layout, ob):
+        mat = ob.active_material
+        col = layout.column(align=True)
+        if mat is None:
+            col.label(text="No material", icon="MATERIAL")
+        else:
+            meta = mat.get(META_PROP)
+            col.label(text=mat.name, icon="MATERIAL")
+            if meta:
+                sub = col.column(align=True)
+                sub.scale_y = 0.8
+                sub.active = False
+                sub.label(text="%s  ·  %d faithful, %d inferred" % (meta.get("shading", ""), meta.get("textures_faithful", 0),
+                                                                     meta.get("textures_inferred", 0)))
+                if meta.get("game_shader"):
+                    sub.label(text="Game shader: %s" % meta["game_shader"])
+            else:
+                sub = col.row()
+                sub.active = False
+                sub.label(text="Not created by HJT FBX+")
+        c = layout.column(align=True)
+        c.operator("hjt_fbx_plus.rebuild_materials", icon="FILE_REFRESH")
+        c.operator("hjt_fbx_plus.find_missing", icon="VIEWZOOM")
+        c.operator("hjt_fbx_plus.reassign_texture", text="Assign Texture to Slot...", icon="IMAGE_DATA")
+
+
 class HJTFBX_PT_profiles(_Base, bpy.types.Panel):
     bl_label = "Game Profiles"
-    bl_order = 1
+    bl_order = 2
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw_header(self, context):
@@ -255,6 +487,7 @@ class HJTFBX_PT_profile_editor(_Base, bpy.types.Panel):
         col = _split(box)
         col.prop(pe, "lod_action")
         col.prop(pe, "collision_action")
+        col.prop(pe, "align_bone_chains")
         col.prop(pe, "fit_bone_lengths")
         col.prop(pe, "verify_skinning")
         box.label(text="Custom Categories (regex on object names)")
@@ -279,200 +512,9 @@ def _list(layout, ul, data, prop):
     op.action = "REMOVE"
 
 
-class HJTFBX_PT_materials(_Base, bpy.types.Panel):
-    bl_label = "Material Reconstruction"
-    bl_order = 2
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw_header(self, context):
-        self.layout.label(text="", icon="MATERIAL")
-
-    def draw(self, context):
-        layout = self.layout
-        st = _settings(context)
-        col = _split(layout)
-        col.prop(st, "material_mode")
-        if st.material_mode == "TEMPLATE":
-            col.prop_search(st, "template_material", bpy.data, "materials")
-        col.separator()
-        col.label(text="Texture Sources")
-        col.prop(st, "use_fbx_references")
-        col.prop(st, "use_material_json")
-        col.prop(st, "name_matching")
-        sub = col.column(align=True)
-        sub.prop(st, "search_depth")
-        sub.prop(st, "search_parent_levels")
-        col.separator()
-        col.prop(st, "texture_storage")
-        if st.texture_storage == "COPY":
-            col.prop(st, "copy_dir")
-        col.prop(st, "reuse_images")
-
-        box = layout.box()
-        box.label(text="Tools for Selected Objects", icon="TOOL_SETTINGS")
-        c = box.column(align=True)
-        c.operator("hjt_fbx_plus.rebuild_materials", icon="FILE_REFRESH")
-        c.operator("hjt_fbx_plus.find_missing", icon="VIEWZOOM")
-        c.operator("hjt_fbx_plus.reassign_texture", text="Assign Texture to Slot...", icon="IMAGE_DATA")
-        ob = context.active_object
-        mat = ob.active_material if ob is not None else None
-        if mat is not None:
-            meta = mat.get(META_PROP)
-            info = box.column(align=True)
-            info.label(text=mat.name, icon="MATERIAL")
-            if meta:
-                info.label(text="Shading: %s" % meta.get("shading", ""))
-                info.label(text="Textures: %d faithful, %d inferred" % (meta.get("textures_faithful", 0), meta.get("textures_inferred", 0)))
-                if meta.get("game_shader"):
-                    info.label(text="Game shader: %s" % meta["game_shader"])
-                notes = meta.get("notes", "")
-                for line in _wrap(notes, 52)[:4]:
-                    if line:
-                        info.label(text=line)
-            else:
-                info.label(text="Not created by HJT FBX+")
-
-
-class HJTFBX_PT_advanced(_Base, bpy.types.Panel):
-    bl_label = "Advanced Settings"
-    bl_order = 3
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw_header(self, context):
-        self.layout.label(text="", icon="PREFERENCES")
-
-    def draw_header_preset(self, context):
-        row = self.layout.row(align=True)
-        row.menu("HJTFBX_MT_presets", text="", icon="PRESET")
-        row.operator("hjt_fbx_plus.preset_add", text="", icon="ADD")
-        row.operator("hjt_fbx_plus.preset_add", text="", icon="REMOVE").remove_active = True
-
-    def draw(self, context):
-        layout = self.layout
-        st = _settings(context)
-        col = _split(layout)
-        col.prop(st, "engine")
-        col.prop(st, "global_scale")
-        col.prop(st, "apply_profile_import")
-        box = layout.box()
-        box.label(text="Geometry & Data", icon="MESH_DATA")
-        c = _split(box)
-        for k in ("use_custom_normals", "colors_type", "keep_tangents", "use_custom_props", "use_subsurf",
-                  "split_inbetweens", "inbetween_drivers"):
-            c.prop(st, k)
-        box = layout.box()
-        box.label(text="Scene Organization", icon="OUTLINER_COLLECTION")
-        c = _split(box)
-        for k in ("organize", "group_by_category", "handle_lods", "handle_collision", "tag_metadata", "stop_on_error"):
-            c.prop(st, k)
-        _fold(layout, st, "ui_show_armature", "Armature", "ARMATURE_DATA",
-              ("fit_bones", "verify_skinning", "ignore_leaf_bones", "force_connect_children",
-               "automatic_bone_orientation", "primary_bone_axis", "secondary_bone_axis", "use_prepost_rot"))
-        _fold(layout, st, "ui_show_animation", "Animation", "ACTION", ("use_anim", "anim_offset"))
-        _fold(layout, st, "ui_show_orientation", "Orientation", "ORIENTATION_GLOBAL",
-              ("use_manual_orientation", "axis_forward", "axis_up", "bake_space_transform"))
-        if st.engine == "CPP":
-            layout.label(text="C++ engine ignores bone axes & manual orientation", icon="INFO")
-
-
-def _fold(layout, st, prop, label, icon, keys):
-    box = layout.box()
-    r = box.row()
-    r.prop(st, prop, text=label, icon="DISCLOSURE_TRI_DOWN" if getattr(st, prop) else "DISCLOSURE_TRI_RIGHT", emboss=False)
-    r.label(text="", icon=icon)
-    if getattr(st, prop):
-        c = _split(box)
-        for k in keys:
-            c.prop(st, k)
-
-
-class HJTFBX_PT_archives(_Base, bpy.types.Panel):
-    bl_label = "Archive Management"
-    bl_order = 4
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw_header(self, context):
-        self.layout.label(text="", icon="FILE_ARCHIVE")
-
-    def draw(self, context):
-        layout = self.layout
-        st = state.get()
-        s = context.window_manager.hjt_fbx_plus
-        if not s.sources:
-            layout.label(text="No archives or files added yet", icon="INFO")
-        else:
-            layout.template_list("HJTFBX_UL_sources", "", s, "sources", s, "sources_index", rows=3)
-            if s.sources_index < len(s.sources):
-                item = s.sources[s.sources_index]
-                src = st.session.sources.get(item.key)
-                box = layout.box()
-                col = box.column(align=True)
-                col.label(text="%s  -  %s" % (item.kind, human_size(src.size) if src else ""), icon="FILE_ARCHIVE")
-                if item.backend:
-                    col.label(text="Reader: " + item.backend)
-                if item.message:
-                    for line in _wrap(item.message, 52):
-                        col.label(text=line)
-                if src is not None:
-                    if src.encrypted:
-                        col.label(text="Contains encrypted entries", icon="LOCKED")
-                    if src.solid:
-                        col.label(text="Solid archive (extracting is sequential)", icon="INFO")
-                    for n in src.notes[:3]:
-                        for line in _wrap(n, 52):
-                            col.label(text=line, icon="INFO")
-                if item.status in ("LOCKED",) or (src is not None and src.encrypted):
-                    r = box.row(align=True)
-                    r.prop(item, "password", text="")
-                    r.operator("hjt_fbx_plus.unlock", text="Unlock", icon="UNLOCKED").index = s.sources_index
-                if src is not None and src.aidx is not None:
-                    r = box.row(align=True)
-                    r.prop(s, "tree_filter", text="", icon="VIEWZOOM")
-                    r.prop(s, "tree_kind", text="")
-                    r.operator("hjt_fbx_plus.tree_expand", text="", icon="DISCLOSURE_TRI_DOWN").collapse = False
-                    r.operator("hjt_fbx_plus.tree_expand", text="", icon="DISCLOSURE_TRI_RIGHT").collapse = True
-                    box.template_list("HJTFBX_UL_tree", "", s, "tree", s, "tree_index", rows=8)
-                    if len(s.tree) >= sync.TREE_ROW_LIMIT:
-                        box.label(text="Showing the first %d rows; use the filter" % sync.TREE_ROW_LIMIT, icon="INFO")
-                    r = box.row(align=True)
-                    r.operator("hjt_fbx_plus.extract", text="Extract Selected...", icon="EXPORT").scope = "ROW"
-                    r.operator("hjt_fbx_plus.extract", text="Extract All...").scope = "ALL"
-        box = layout.box()
-        used, n = cache_usage(st)
-        r = box.row()
-        r.label(text="Cache: %s in %d files" % (human_size(used), n), icon="FILE_CACHE")
-        r.operator("hjt_fbx_plus.cache_clear", text="", icon="TRASH")
-        r.operator("hjt_fbx_plus.open_folder", text="", icon="FILE_FOLDER").which = "CACHE"
-        from .operators.session_ops import backend_info
-        info, _d = backend_info(st)
-        col = box.column(align=True)
-        col.scale_y = 0.85
-        col.label(text="ZIP: built-in", icon="CHECKMARK")
-        col.label(text="7Z: built-in" + (" + external" if any("7z" in t["formats"] for t in info["tools"].values()) else ""), icon="CHECKMARK")
-        rar_ok = "not available" not in info["rar"]
-        col.label(text="RAR: " + info["rar"], icon="CHECKMARK" if rar_ok else "ERROR")
-        box.operator("hjt_fbx_plus.tools_detect", icon="VIEWZOOM")
-
-
-_USAGE = {"t": 0.0, "v": (0, 0)}
-
-
-def cache_usage(st):
-    #walking the cache folder on every redraw would be dumb, refresh every 2s at most
-    import time
-    now = time.monotonic()
-    if now - _USAGE["t"] > 2.0:
-        _USAGE["t"] = now
-        try:
-            _USAGE["v"] = st.cache.usage()
-        except OSError:
-            _USAGE["v"] = (0, 0)
-    return _USAGE["v"]
-
-
 class HJTFBX_PT_diagnostics(_Base, bpy.types.Panel):
     bl_label = "Import Diagnostics"
-    bl_order = 5
+    bl_order = 3
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw_header(self, context):
@@ -515,5 +557,4 @@ class HJTFBX_PT_diagnostics(_Base, bpy.types.Panel):
         layout.operator("hjt_fbx_plus.open_folder", text="Open Log Folder", icon="FILE_FOLDER").which = "LOGS"
 
 
-CLASSES = (HJTFBX_PT_import, HJTFBX_PT_profiles, HJTFBX_PT_profile_editor, HJTFBX_PT_materials,
-           HJTFBX_PT_advanced, HJTFBX_PT_archives, HJTFBX_PT_diagnostics)
+CLASSES = (HJTFBX_PT_main, HJTFBX_PT_selected, HJTFBX_PT_profiles, HJTFBX_PT_profile_editor, HJTFBX_PT_diagnostics)

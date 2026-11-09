@@ -228,8 +228,8 @@ def tag_redraw_all(area_types=("VIEW_3D", "PROPERTIES", "FILE_BROWSER")):
                 area.tag_redraw()
 
 
-def draw_progress(layout, factor, text):
+def draw_progress(layout, factor, text, ring=False):
     if HAS_LAYOUT_PROGRESS:
-        layout.progress(factor=factor, type="BAR", text=text)
+        layout.progress(factor=factor, type="RING" if ring else "BAR", text=text)
     else:
         layout.label(text="%s (%d%%)" % (text, int(factor * 100)))

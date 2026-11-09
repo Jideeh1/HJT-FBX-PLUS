@@ -35,7 +35,7 @@ class AddonState:
         deps.activate(self.user_dir)
         self.registry = Registry(self.profiles_dir)
         self.cache = CacheManager(root=(getattr(prefs, "cache_dir", "") or None),
-                                  policy=getattr(prefs, "cache_policy", "AFTER_IMPORT"),
+                                  policy="AFTER_IMPORT",
                                   max_mb=getattr(prefs, "cache_max_mb", 0))
         try:
             self.cache.purge_stale(24.0)
@@ -58,8 +58,7 @@ class AddonState:
             self.tasks.shutdown()
         finally:
             self.services.close()
-            if self.cache.policy in ("AFTER_IMPORT", "SESSION"):
-                self.cache.cleanup_session()
+            self.cache.cleanup_session()
             logmod.teardown()
 
 

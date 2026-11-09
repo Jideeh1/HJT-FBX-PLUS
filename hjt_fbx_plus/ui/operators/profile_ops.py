@@ -195,6 +195,7 @@ def load_editor(pe, profile):
     pe.shadow_tint = tuple(float(x) for x in tint[:3])
     pe.shadow_threshold = float(md.get("shadow_threshold", 0.5))
     corr = d.get("corrections") or {}
+    pe.align_bone_chains = bool(corr.get("align_bone_chains", False))
     pe.fit_bone_lengths = bool(corr.get("fit_bone_lengths", False))
     pe.verify_skinning = bool(corr.get("verify_skinning", True))
     tex = d.get("textures") or {}
@@ -282,6 +283,7 @@ def editor_to_json(pe, profile):
         rules.append(base)
     mats["rules"] = rules
     corr = raw.setdefault("corrections", {})
+    corr["align_bone_chains"] = pe.align_bone_chains
     corr["fit_bone_lengths"] = pe.fit_bone_lengths
     corr["verify_skinning"] = pe.verify_skinning
     tex = raw.setdefault("textures", {})

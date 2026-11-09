@@ -2,7 +2,7 @@
 
 **Advanced FBX & Game Asset Importer for Blender**, by HJT Studio
 
-HJT FBX+ imports FBX files, and ZIP, 7Z and RAR archives full of them, into Blender, with textures found and wired up automatically. It works out each game asset's materials, keeps as much of the FBX data as Blender can hold, and reports exactly what it did, what it guessed and what is missing.
+HJT FBX+ imports FBX and UEModel (`.uemodel`) files, and ZIP, 7Z and RAR archives full of them, into Blender, with textures found and wired up automatically. It works out each game asset's materials, keeps as much of the FBX data as Blender can hold, and reports exactly what it did, what it guessed and what is missing.
 
 It is a standalone add-on. It drives Blender's own FBX importers and needs no other FBX add-on.
 
@@ -11,7 +11,7 @@ It is a standalone add-on. It drives Blender's own FBX importers and needs no ot
 | Blender | 3.6 LTS – 5.2+ (legacy add-on on 3.6–4.1, extension on 4.2+) |
 | Platforms | Windows, macOS, Linux |
 | License | GPL-3.0-or-later |
-| Version | 1.0.0 |
+| Version | 1.2.0 |
 
 ---
 
@@ -53,11 +53,11 @@ It is a standalone add-on. It drives Blender's own FBX importers and needs no ot
 
 ## Quick start
 
-1. Download `hjt_fbx_plus-1.0.0.zip` from the [Releases](https://github.com/Jideeh1/HJT-FBX-Plus/releases) page (do not unzip it).
+1. Download `hjt_fbx_plus-1.2.0.zip` from the [Releases](https://github.com/Jideeh1/HJT-FBX-PLUS/releases) page (do not unzip it).
 2. Blender 4.2+: *Edit › Preferences › Get Extensions › ⌄ › Install from Disk…*  
    Blender 3.6–4.1: *Edit › Preferences › Add-ons › Install…*  
    Pick the ZIP and enable **HJT FBX+**.
-3. *File › Import › HJT FBX+ (.fbx, .zip, .7z, .rar)*, or drag a file into the 3D View (4.1+).
+3. *File › Import › HJT FBX+ (.fbx, .uemodel, .zip, .7z, .rar)*, or drag a file into the 3D View (4.1+).
 4. Review the models in the **HJT FBX+** sidebar tab (press `N` in the 3D View), then press **Import Selected**.
 
 Full instructions: [docs/INSTALL.md](docs/INSTALL.md) · [docs/USAGE.md](docs/USAGE.md)

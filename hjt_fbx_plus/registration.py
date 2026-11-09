@@ -39,6 +39,34 @@ def register():
         pass
     #window manager props exist now, fill history + profile lists on the first tick
     bpy.app.timers.register(lambda: (sync.on_load_post(), None)[1], first_interval=0.3)
+    bpy.app.timers.register(_startup_update_check, first_interval=4.0)
+
+
+def _startup_update_check():
+    #few secs after startup so we dont slow blender opening. thread does the network part
+    try:
+        from .blender import updater
+        p = state.prefs()
+        days = float(getattr(p, "update_auto", "1") or 1)
+        if days < 0:
+            updater.load_last_check()
+            return None
+        updater.auto_check(days, prerelease=bool(getattr(p, "update_prerelease", False)))
+        if getattr(p, "update_auto_install", False):
+            bpy.app.timers.register(_auto_install_when_found, first_interval=3.0)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _auto_install_when_found():
+    from .blender import updater
+    s = updater.STATUS.state
+    if s == "CHECKING":
+        return 2.0  #still asking github, poll again
+    if s == "AVAILABLE":
+        updater.download(then_install=True)
+    return None
 
 
 def unregister():

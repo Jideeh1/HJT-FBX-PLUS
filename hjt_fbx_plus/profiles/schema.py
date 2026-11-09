@@ -83,7 +83,7 @@ DEFAULT_PROFILE = {
                                    r"(?i)(?:^|[_\-. ])(?:col|coll|collision|collider|collisionmesh|phys|physics|hitbox)(?:$|[_\-. ]|\d)"]},
         "custom": [],
     },
-    "corrections": {"fit_bone_lengths": False, "verify_skinning": True},
+    "corrections": {"align_bone_chains": False, "fit_bone_lengths": False, "verify_skinning": True},
 }
 
 #import keys a profile may override (scene settings with the same names)

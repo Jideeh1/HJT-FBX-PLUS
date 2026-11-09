@@ -66,9 +66,10 @@ def read_json_bytes(data):
 
 
 class UnityMaterial:
-    __slots__ = ("name", "shader", "textures", "floats", "colors", "keywords", "source")
+    __slots__ = ("name", "shader", "textures", "floats", "colors", "keywords", "source", "kind")
 
     def __init__(self):
+        self.kind = "unity"
         self.name = ""
         self.shader = ""
         self.textures = {}  #unity slot -> {"name", "scale", "offset"}
@@ -83,6 +84,8 @@ class UnityMaterial:
             return None
         props = data.get("m_SavedProperties")
         if not isinstance(props, dict):
+            if isinstance(data.get("Textures"), dict):
+                return cls._from_ue(data, source)
             return None
         um = cls()
         um.source = source
@@ -125,8 +128,74 @@ class UnityMaterial:
             um.keywords = set(str(k) for k in kw)
         return um
 
+    @classmethod
+    def _from_ue(cls, data, source):
+        #fmodel / ueformat material instance dump: {"Textures": {param: "/Game/../T_X.T_X"}, "Parameters": {...}}
+        um = cls()
+        um.kind = "ue"
+        um.source = source
+        um.name = source.replace("\\", "/").rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        for param, path in data["Textures"].items():
+            if not isinstance(path, str) or not path:
+                continue
+            name = path.replace("\\", "/").rsplit("/", 1)[-1].split(".")[-1]
+            if name:
+                um.textures[str(param)] = {"name": name, "scale": (1.0, 1.0), "offset": (0.0, 0.0)}
+        #fmodel also lists each texture under its own name. drop those echoes when a real param has it
+        named = {}
+        for param, info in um.textures.items():
+            if param != info["name"]:
+                named[info["name"]] = param
+        for param in [p for p, info in um.textures.items() if p == info["name"] and p in named]:
+            del um.textures[param]
+        p = data.get("Parameters") if isinstance(data.get("Parameters"), dict) else {}
+        for k, v in (p.get("Scalars") or {}).items():
+            try:
+                um.floats[str(k)] = float(v)
+            except (TypeError, ValueError):
+                pass
+        for k, v in (p.get("Colors") or {}).items():
+            c = _color(v)
+            if c is not None:
+                um.colors[str(k)] = c
+        for k, v in (p.get("Switches") or {}).items():
+            if v:
+                um.keywords.add(str(k))
+        for k in ("BlendMode", "ShadingModel"):
+            if isinstance(p.get(k), (int, float)):
+                um.floats["__" + k] = float(p[k])
+        if p.get("IsTranslucent"):
+            um.keywords.add("__translucent")
+        um.shader = str(data.get("Parent") or data.get("ParentMaterial") or "")
+        return um
+
+    def _ue_params(self):
+        out = {"shader": self.shader}
+        #EBlendMode: 0 opaque 1 masked 2 translucent 3 additive 4 modulate
+        mode = int(self.floats.get("__BlendMode", 0))
+        blend = {1: "CLIP", 2: "BLEND", 3: "ADD", 4: "MULTIPLY"}.get(mode)
+        if blend is None and "__translucent" in self.keywords:
+            blend = "BLEND"
+        if blend:
+            out["blend"] = blend
+        for k in ("Opacity Mask Clip Value", "OpacityMaskClipValue", "AlphaClip", "Cutoff"):
+            if k in self.floats:
+                out["alpha_threshold"] = self.floats[k]
+                break
+        for k in ("Normal Intensity", "NormalIntensity", "NormalStrength", "Normal Strength"):
+            if k in self.floats:
+                out["normal_strength"] = self.floats[k]
+                break
+        for k in ("BaseColor", "Base Color", "Tint", "Color", "MainColor"):
+            if k in self.colors:
+                out["tint"] = self.colors[k]
+                break
+        return out
+
     #interpretation, turns unity params into stuff the material builder understands
     def params(self):
+        if self.kind == "ue":
+            return self._ue_params()
         f = self.floats
         c = self.colors
         out = {"shader": self.shader}

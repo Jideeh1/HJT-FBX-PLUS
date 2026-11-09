@@ -130,7 +130,7 @@ def categorize(doc, mapping, profile, opts, diag, model, sub_collection):
     col_on = (cats.get("collision") or {}).get("enabled", True) and opts.get("handle_collision", True)
     found = {}
     lod_levels = {}
-    names = {uid_key(u): o.name for u, o in doc.objects.items() if o.cls == b"Model"}  #once, not per object
+    names = {uid_key(u): o.name for u, o in doc.objects.items() if o.cls == b"Model"} if doc is not None else {}
     for uid, ob in mapping.objects.items():
         fbx_name = names.get(uid) or re.sub(r"\.\d{3,}$", "", ob.name)
         if col_on and ob.type == "MESH" and any(rx.search(fbx_name) for rx in profile.collision_patterns):
@@ -156,7 +156,7 @@ def categorize(doc, mapping, profile, opts, diag, model, sub_collection):
                 ob["hjt_category"] = cname
                 _apply_action(ob, action)
     #lod groups from fbx LodGroup nodes, children in connection order = lod0, lod1 ...
-    for grp in doc.objects_of(b"Model", b"LodGroup"):
+    for grp in (doc.objects_of(b"Model", b"LodGroup") if doc is not None else ()):
         kids = [c for c in doc.children(grp.uid, b"Model")]
         for i, child in enumerate(kids):
             ob = mapping.objects.get(uid_key(child.uid))

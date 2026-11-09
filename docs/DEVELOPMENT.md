@@ -79,10 +79,12 @@ The Blender tests run in a Blender executable (`blender -b --factory-startup --p
    ```
 
    ```bash
-   blender -b --factory-startup --python tests/blender/test_install.py -- dist/hjt_fbx_plus-1.0.0.zip /tmp/hjt-archives/assets.zip
+   blender -b --factory-startup --python tests/blender/test_install.py -- dist/hjt_fbx_plus-1.2.0.zip /tmp/hjt-archives/assets.zip
    ```
 
 Each script prints `== PASS` or `== FAIL (n failures)` and exits non-zero on failure.
+
+Run them with `BLENDER_USER_EXTENSIONS`, `BLENDER_USER_CONFIG` and `BLENDER_USER_SCRIPTS` set to an empty scratch folder. `--factory-startup` still uses your real extensions folder, and installing or removing an extension there makes Blender resync bundled Python wheels for factory settings, which deletes the wheels of your other extensions.
 
 The tests and generators only use generated data. Never commit game assets to the repository.
 

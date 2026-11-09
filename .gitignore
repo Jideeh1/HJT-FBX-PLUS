@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.part
+/dist/
+/build/
+/tests/assets/generated/
+/tests/output/
+*.blend1
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

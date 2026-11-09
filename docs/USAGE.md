@@ -38,6 +38,10 @@ Model preview (the active model):
 - Textures: **faithful** (linked in the FBX or listed in a material JSON), **inferred** (found by naming rules), **missing**.
 - Issues found while reading the file (e.g. in-between shapes, unsupported features, missing textures) and the first animation clips.
 
+### UEModel files
+
+`.uemodel` files (FModel / UEFormat exports) import like FBX: pick one in the file browser, drop it on the 3D View, or pick an archive that contains them. FModel material JSON files next to the model (or in a `Materials` folder) are used to wire textures. When a folder holds several parts of one character (body, face, hair...), the archive picker lists **<folder> (all N parts)** first; it imports every part onto one shared armature. Bone chains on UEModel rigs are always aligned when *Align Bone Chains* is set to *From Profile*, because raw Unreal bone axes point sideways in Blender.
+
 If *Analyze on Add* is turned off in the preferences, models show **Not analyzed yet** with an **Analyze** button. They can still be imported without it.
 
 ## 2. Game Profiles
@@ -166,7 +170,6 @@ Import presets are in this section's header (the preset icon). They save every i
 | Preference | Default | Description |
 |---|---|---|
 | Cache Folder | system temp | Where archive contents are extracted temporarily. |
-| Clean Up | After Each Import | Delete extracted files after each batch (textures are packed first), when Blender closes, or never (until *Clear Cache*). |
 | Size Limit (MB) | 0 (none) | The oldest extracted archives are removed when the cache grows past this. |
 | Background Threads | 2 | Threads for archive reading, extraction and analysis. |
 | Analyze on Add | On | Analyze models as soon as they are added. |
