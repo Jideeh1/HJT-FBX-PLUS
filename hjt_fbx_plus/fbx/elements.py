@@ -238,13 +238,20 @@ class FbxNode:
         self.props.append(value)
         self.types = self.types + type_code
 
-    def walk(self):
-        # depth first, this node + everything under it
+    @property
+    def raw_children(self):
+        #(parser, start, end) of a subtree nobody parsed yet, so the writer can copy the bytes as is
+        lz = self._lazy
+        return (lz.parser, lz.start, lz.end) if lz is not None and hasattr(lz, "parser") else None
+
+    def walk(self, load=True):
+        # depth first, this node + everything under it. load=False leaves unparsed subtrees alone
         stack = [self]
         while stack:
             node = stack.pop()
             yield node
-            stack.extend(reversed(node.children))
+            if load or node._lazy is None:
+                stack.extend(reversed(node.children))
 
     def __repr__(self):
         return "<FbxNode %s props=%d children=%s>" % (

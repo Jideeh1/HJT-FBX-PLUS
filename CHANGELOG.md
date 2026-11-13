@@ -2,6 +2,18 @@
 
 All notable changes to HJT FBX+ are documented here. The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-13
+
+### Added
+- Wuthering Waves profile: detected from `MI_R2T1...Md...` names, reads the packed `_N` (Normal_Roughness_Metallic) map as a two-channel normal and maps WuWa material parameters.
+
+### Changed
+- Imports with many animation clips are several times faster: animation curve data is copied through the FBX repair step without being parsed, and *Auto* uses Blender's C++ importer for animation-heavy files (unless a Python-only option is on). 40 clips on a 256-bone rig: 54 s to 11 s.
+- Bone chain alignment is faster: the bone tree is built once instead of per bone, and animation keys are re-expressed with numpy. 511-bone character: 2.6 s to 0.5 s.
+
+### Fixed
+- UE material JSON: the texture named after the material now wins over FModel's `PM_*` guesses, which often point at a white placeholder, a matcap or an effect texture (wrong colours on Wuthering Waves models).
+
 ## [1.2.0] - 2026-11-10
 
 ### Added

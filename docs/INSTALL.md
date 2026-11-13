@@ -6,13 +6,13 @@ HJT FBX+ ships as one ZIP file, `hjt_fbx_plus-<version>.zip`, that installs on e
 
 1. *Edit › Preferences › Get Extensions*.
 2. Open the **⌄** menu at the top right and choose **Install from Disk…**
-3. Select `hjt_fbx_plus-1.2.0.zip`.
+3. Select `hjt_fbx_plus-1.3.0.zip`.
 4. The extension is enabled automatically. You will find it under *Add-ons* as **HJT FBX+**.
 
 ## Blender 3.6 – 4.1 (legacy add-on)
 
 1. *Edit › Preferences › Add-ons › Install…*
-2. Select `hjt_fbx_plus-1.2.0.zip` and click **Install Add-on**.
+2. Select `hjt_fbx_plus-1.3.0.zip` and click **Install Add-on**.
 3. Tick the checkbox next to **Import-Export: HJT FBX+**.
 
 ## Check that it works

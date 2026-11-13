@@ -22,7 +22,7 @@ import array
 import os
 
 from .elements import FbxArray, FbxError, FbxNode, decode_name, name_class_split
-from .document import FbxDocument
+from .document import PREPARE_LAZY_NODES, FbxDocument
 from . import binary as _binary
 
 UID_PROP = "hjt_fbx_uid"
@@ -223,7 +223,7 @@ def _sanitize_tree(root, result, strip_user):
     for top in (root.find(b"Objects"), root.find(b"GlobalSettings"), root.find(b"Definitions")):
         if top is None:
             continue
-        for node in top.walk():
+        for node in top.walk(load=False):
             if node.name == b"Properties70":
                 _sanitize_p70(node, result, strip_user)
 
@@ -457,5 +457,5 @@ def prepare_document(doc, out_path, options=None):
 
 def prepare_file(src_path, out_path, options=None, cancel=None):
     #convenience: open, prepare, close
-    with FbxDocument.open(src_path, lazy=False, cancel=cancel) as doc:
+    with FbxDocument.open(src_path, lazy=False, cancel=cancel, lazy_names=PREPARE_LAZY_NODES) as doc:
         return prepare_document(doc, out_path, options)

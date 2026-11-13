@@ -115,8 +115,19 @@ class _Avail:
         return self.d.get(eng.id, False) if self.d is not None else eng.available()
 
 
-def choose(requested, fbx_format, fbx_version, avail=None):
-    #-> (engine, notes). AUTO = python importer (most options, battle tested) unless the file needs ufbx
+ANIM_HEAVY = 2000  #animation curves. 40 clips on a 256 bone rig: python importer 30 s, c++ 2.6 s, same poses
+_PY_ONLY_DEFAULTS = {"automatic_bone_orientation": False, "primary_bone_axis": "Y", "secondary_bone_axis": "X",
+                     "force_connect_children": False, "use_prepost_rot": True, "use_manual_orientation": False,
+                     "bake_space_transform": False}
+
+
+def python_only_options(settings):
+    return sorted(k for k, d in _PY_ONLY_DEFAULTS.items() if k in (settings or {}) and settings[k] != d)
+
+
+def choose(requested, fbx_format, fbx_version, avail=None, anim_curves=0, settings=None):
+    #-> (engine, notes). AUTO = python importer (most options, battle tested) unless the file needs ufbx,
+    # or its animation heavy n nothing python-only is switched on. the python one crawls on big takes
     ok = _Avail(avail)
     notes = []
     v6 = 0 < fbx_version < 7000
@@ -139,4 +150,7 @@ def choose(requested, fbx_format, fbx_version, avail=None):
             notes.append("The Python FBX importer (io_scene_fbx) is disabled; using the C++ importer.")
             return CPP, notes
         return None, ["No FBX importer is enabled. Enable the 'FBX format' add-on in Preferences > Add-ons."]
+    if requested == "AUTO" and anim_curves >= ANIM_HEAVY and ok(CPP) and not python_only_options(settings):
+        notes.append("%d animation curves: using Blender's C++ importer (much faster on big animation sets)." % anim_curves)
+        return CPP, notes
     return PYTHON, notes

@@ -20,7 +20,7 @@ from ..archives import open_archive
 from ..archives.base import ArchiveError, Cancelled
 from ..archives.index import ArchiveIndex
 from ..core.log import log
-from ..fbx.document import FbxDocument
+from ..fbx.document import PREPARE_LAZY_NODES, FbxDocument
 from ..fbx.elements import FbxBlob, decode_name
 from ..fbx.inspect import inspect_document
 from ..fbx.prepare import PrepareOptions, prepare_document, uid_key
@@ -232,7 +232,7 @@ def prepare_job(task, source, opts, services, engine_avail):
         prep.summary = ue_summarize(prep.ue_parts, source.label)
     else:
         step(0.15, "Reading FBX")
-        doc = FbxDocument.open(prep.local_fbx, lazy=False, cancel=cancel)
+        doc = FbxDocument.open(prep.local_fbx, lazy=False, cancel=cancel, lazy_names=PREPARE_LAZY_NODES)
         prep.doc = doc
         prep.summary = inspect_document(doc, deep=True, cancel=cancel)
     prep.timings["parse"] = time.monotonic() - t1
@@ -301,7 +301,9 @@ def prepare_job(task, source, opts, services, engine_avail):
 
     step(0.88, "Preparing FBX")
     t4 = time.monotonic()
-    eng, notes = engines.choose(opts.get("engine", "AUTO"), doc.format, doc.version, engine_avail)
+    eng, notes = engines.choose(opts.get("engine", "AUTO"), doc.format, doc.version, engine_avail,
+                                anim_curves=int(prep.summary.get("counts", {}).get("anim_curves", 0) or 0),
+                                settings=resolve_settings(opts, prep.profile))
     prep.notes.extend(notes)
     if eng is None:
         raise RuntimeError(" ".join(notes) or "no FBX importer available")

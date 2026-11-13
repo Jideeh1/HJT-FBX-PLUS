@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "wuthering_waves",
+  "name": "Wuthering Waves",
+  "description": "Wuthering Waves exports (FModel .uemodel or FBX with MI_R2T1<Name>Md10011 materials and a Materials/ folder of material JSON). _D is the base color, _N is a packed Normal_Roughness_Metallic map read as a two-channel (RG) normal, _ID/_HM/_HET are game masks kept as auxiliary textures, the face uses its SDF map. Toon shading is an approximation.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {
+    "min_score": 3,
+    "rules": [
+      {"target": "material", "pattern": "(?i)^MI_R\\d+T\\d+\\w*Md\\d+", "weight": 3},
+      {"target": "texture", "pattern": "(?i)^T_R\\d+T\\d+\\w*Md\\d+", "weight": 2},
+      {"target": "mesh", "pattern": "(?i)^R\\d+T\\d+\\w*Md\\d+", "weight": 2},
+      {"target": "bone", "pattern": "(?i)^Bip001", "weight": 0.5}
+    ]
+  },
+  "textures": {
+    "unity_slots": {
+      "MainTex": "base_color", "PM_Diffuse": "base_color", "D": "base_color",
+      "PM_Normals": "normal", "Normal_Roughness_Metallic": "normal",
+      "TypeMask": "mask", "RegionIDTex": "mask", "Mask": "mask",
+      "Ramp": "ramp", "HairRamp": "ramp",
+      "EM": "emission", "PM_Emissive": "emission",
+      "MatCapTex": "matcap"
+    },
+    "slots": [
+      {"slot": "base_color", "pattern": "_l?d$"},
+      {"slot": "normal", "pattern": "_n$"},
+      {"slot": "emission", "pattern": "_em$"},
+      {"slot": "face_map", "pattern": "_sdf$"},
+      {"slot": "ramp", "pattern": "_(skin|hr)$"},
+      {"slot": "mask", "pattern": "_(id|hm|het|ftm|rgid|g)$"}
+    ],
+    "strip_material_tokens": ["(?i)^MI_", "(?i)_(OL|HETA?|FS)$", "\\.\\d{3}$"]
+  },
+  "materials": {
+    "default": {"template": "TOON", "base_alpha_usage": "AUTO", "normal_format": "RG", "shadow_tint": [0.82, 0.78, 0.86], "shadow_threshold": 0.5},
+    "rules": [
+      {"match": "(?i)_OL$", "category": "Outline"},
+      {"match": "(?i)(face|brow)", "category": "Face"},
+      {"match": "(?i)eye", "category": "Eye"},
+      {"match": "(?i)(hair|bangs)", "category": "Hair"}
+    ]
+  },
+  "corrections": {"align_bone_chains": true, "fit_bone_lengths": true, "verify_skinning": true}
+}

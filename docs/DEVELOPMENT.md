@@ -79,7 +79,7 @@ The Blender tests run in a Blender executable (`blender -b --factory-startup --p
    ```
 
    ```bash
-   blender -b --factory-startup --python tests/blender/test_install.py -- dist/hjt_fbx_plus-1.2.0.zip /tmp/hjt-archives/assets.zip
+   blender -b --factory-startup --python tests/blender/test_install.py -- dist/hjt_fbx_plus-1.3.0.zip /tmp/hjt-archives/assets.zip
    ```
 
 Each script prints `== PASS` or `== FAIL (n failures)` and exits non-zero on failure.

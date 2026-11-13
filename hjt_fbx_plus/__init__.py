@@ -17,7 +17,7 @@
 bl_info = {
     "name": "HJT FBX+",
     "author": "HJT Studio",
-    "version": (1, 2, 0),
+    "version": (1, 3, 0),
     "blender": (3, 6, 0),
     "location": "File > Import > HJT FBX+  |  3D View > Sidebar > HJT FBX+",
     "description": "Advanced FBX & Game Asset Importer: automatic textures, material reconstruction, "

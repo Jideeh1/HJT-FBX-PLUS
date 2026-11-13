@@ -18,6 +18,8 @@ FBX_KTIME = 46186158000  #fbx time ticks per second. yes really, 46 billion, don
 
 #nodes we dont need to understand a scene, parsed lazy only if someone pokes them
 PREVIEW_LAZY_NODES = frozenset((b"AnimationCurve", b"Takes", b"References", b"Definitions"))
+#prepare edits everything except the key arrays, those get copied through untouched (binary.py _raw)
+PREPARE_LAZY_NODES = frozenset((b"AnimationCurve",))
 
 #fbx TimeMode enum -> fps. 0 n 14 mean custom/default
 TIME_MODE_FPS = {
@@ -131,12 +133,14 @@ class FbxDocument:
         self._build()
 
     @classmethod
-    def open(cls, path, lazy=True, cancel=None, use_mmap=None):
+    def open(cls, path, lazy=True, cancel=None, use_mmap=None, lazy_names=None):
         #opens binary or ascii. remember to close() it or the mmap hangs around
         with open(path, "rb") as fh:
             head = fh.read(4096)
         if _binary.is_binary_fbx(head):
-            res = _binary.read_binary(path, lazy_names=PREVIEW_LAZY_NODES if lazy else None,
+            if lazy_names is None:
+                lazy_names = PREVIEW_LAZY_NODES if lazy else None
+            res = _binary.read_binary(path, lazy_names=lazy_names,
                                       use_mmap=use_mmap)
             return cls(res.root, res.version, "binary", path, res.source, res.node_count)
         if _ascii.is_ascii_fbx(head):

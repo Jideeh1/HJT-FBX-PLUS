@@ -95,6 +95,37 @@ class FbxTests(unittest.TestCase):
         binary.write_binary(out, res.root, res.version)
         self.assertEqual(out.getvalue(), data)
 
+    def test_lazy_subtree_passthrough(self):
+        #curves left unparsed get copied as bytes; offsets after a grown node must still line up
+        res = binary.read_binary(data=tiny_fbx())
+        objs = next(n for n in res.root.children if n.name == b"Objects")
+        for i in range(3):
+            objs.children.append(FbxNode(b"AnimationCurve", [100 + i, b"\x00\x01AnimCurve", b""], b"LSS", [
+                FbxNode(b"Default", [0.0], b"D"), FbxNode(b"KeyVer", [4009], b"I"),
+                FbxNode(b"KeyTime", [FbxArray.from_values("l", [0, 46186158000 * (i + 1)])], b"l"),
+                FbxNode(b"KeyValueFloat", [FbxArray.from_values("f", [0.5, 1.5 + i])], b"f")]))
+        buf = io.BytesIO()
+        binary.write_binary(buf, res.root, 7400)
+        src = buf.getvalue()
+        outs = []
+        for lazy in (None, frozenset((b"AnimationCurve",))):
+            r = binary.read_binary(data=src, lazy_names=lazy)
+            geo = next(n for n in r.root.children if n.name == b"Objects").children[0]
+            geo.add_prop("S", b"grown so every curve after it moves")
+            if lazy:
+                curves = [n for n in next(n for n in r.root.children if n.name == b"Objects").children if n.name == b"AnimationCurve"]
+                self.assertTrue(all(c.raw_children is not None for c in curves))
+            out = io.BytesIO()
+            binary.write_binary(out, r.root, 7400)
+            outs.append(out.getvalue())
+        self.assertEqual(outs[0], outs[1])
+        tree_equal(binary.read_binary(data=outs[0]).root, binary.read_binary(data=outs[1]).root)
+        #different header width cant be copied raw, must fall back to a real rebuild
+        r = binary.read_binary(data=src, lazy_names=frozenset((b"AnimationCurve",)))
+        out = io.BytesIO()
+        binary.write_binary(out, r.root, 7500)
+        tree_equal(binary.read_binary(data=src).root, binary.read_binary(data=out.getvalue()).root)
+
     def test_64bit_headers(self):
         res = binary.read_binary(data=tiny_fbx())
         out = io.BytesIO()

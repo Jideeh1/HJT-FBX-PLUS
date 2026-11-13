@@ -381,6 +381,29 @@ def _write_prop(write, t, value):
         write(data)
 
 
+def _relocate(buf, start, stop, delta, hstruct, hsize):
+    #node headers store ABSOLUTE end offsets, so a copied subtree needs every end shifted by delta.
+    # only headers r touched, props + arrays go through as raw bytes
+    out = bytearray(buf[start:stop])
+    if not delta:
+        return out
+    unpack, pack = hstruct.unpack_from, hstruct.pack_into
+    stack = [(0, stop - start)]
+    while stack:
+        pos, limit = stack.pop()
+        while pos + hsize <= limit:
+            end, nprops, plen = unpack(out, pos)
+            if end == 0:
+                break
+            pack(out, pos, end + delta, nprops, plen)
+            kids = pos + hsize + 1 + out[pos + hsize] + plen
+            rel_end = end - start
+            if kids < rel_end:
+                stack.append((kids, rel_end))
+            pos = rel_end
+    return out
+
+
 class _Writer:
     def __init__(self, version):
         self.wide = version >= 7500
@@ -392,12 +415,28 @@ class _Writer:
     def _needs_sentinel(self, node, is_last):
         return bool(node.children) or (not node.props and not is_last) or node.name in _ALWAYS_SENTINEL
 
+    def _raw(self, node):
+        #untouched lazy subtree from a same-width file -> copy its bytes instead of parse + rebuild.
+        # 40 clips = ~740k curve key nodes, this is where the prepare time went
+        raw = node.raw_children
+        if raw is None:
+            return None
+        parser = raw[0]
+        if parser.wide != self.wide or parser.src.closed:
+            return None
+        return raw
+
     def node_size(self, node, is_last):
         types = node.types
         plen = 0
         for i, value in enumerate(node.props):
             plen += 1 + _prop_size(types[i], value)
         size = self.hsize + 1 + len(node.name) + plen
+        raw = self._raw(node)
+        if raw is not None:
+            size += raw[2] - raw[1]  #children + their closing sentinel, as stored
+            self.sizes[id(node)] = (size, plen)
+            return size
         children = node.children
         if children:
             last = len(children) - 1
@@ -422,6 +461,11 @@ class _Writer:
             write(bytes((t,)))
             _write_prop(write, t, value)
         pos = offset + self.hsize + 1 + len(node.name) + plen
+        raw = self._raw(node)
+        if raw is not None:
+            parser, start, stop = raw
+            write(_relocate(parser.buf, start, stop, pos - start, self.hstruct, self.hsize))
+            return end
         children = node.children
         if children:
             last = len(children) - 1

@@ -23,7 +23,7 @@ CORE_SLOTS = ("base_color", "normal", "metallic", "roughness", "smoothness", "sp
               "emission_mask", "opacity", "orm", "mra", "rma", "metallic_smoothness", "hdrp_mask")
 FAITHFUL_SOURCES = ("fbx", "embedded", "unity-json")
 _DUP = re.compile(r"\.\d{3}$")
-_UE_PLACEHOLDER = re.compile(r"(?i)^(default|t_srgb_|t_linear_|t_flat|t_white|t_black|t_gray|t_grey)|noise|tonemap|lut$")
+_UE_PLACEHOLDER = re.compile(r"(?i)^(t_)?(default|srgb_|linear_)|^(t_srgb_|t_linear_|t_flat|t_white|t_black|t_gray|t_grey)|noise|tonemap|lut$")
 
 
 class Assignment:
@@ -88,6 +88,13 @@ class MaterialPlan:
         return {"name": self.name, "category": self.category, "shader": self.shader, "json": self.json_path,
                 "template": self.settings.get("template"), "assignments": [a.as_dict() for a in self.assignments],
                 "missing": list(self.missing), "warnings": list(self.warnings)}
+
+
+_TOKEN_JUNK = {"mi", "m", "t", "mat", "d", "n"}
+
+
+def _tokens(name):
+    return {t for t in re.split(r"[^0-9a-z]+", (name or "").lower()) if t and t not in _TOKEN_JUNK}
 
 
 def _basename(p):
@@ -266,7 +273,14 @@ class _Planner:
             overrides = p.settings.get("unity_slots") or {}
             json_dir = um.source.rpartition("/")[0]
             prefer = [json_dir.rpartition("/")[0] + "/Textures", self.base_dir + "/Textures", json_dir]
-            for uslot, info in um.textures.items():
+            items = list(um.textures.items())
+            if um.kind == "ue":
+                #several params fight over one slot (MainTex vs PM_Diffuse vs D). fmodels PM_* r its own
+                # guesses n love picking a 1x1 white or a star fx. the texture named like the material wins,
+                # PM_* loses ties. sorted worst -> best bc the json adds w prefer_new, last one stays
+                mtok = _tokens(clean)
+                items.sort(key=lambda kv: (len(mtok & _tokens(kv[1]["name"])), not kv[0].startswith("PM_")))
+            for uslot, info in items:
                 slot = overrides.get(uslot) or self.profile.unity_slot(uslot)
                 #ue instances list every param of the parent shader: noise, dissolve, luts, 1x1 defaults...
                 # unknown params only stay when the filename says what they r

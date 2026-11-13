@@ -11,7 +11,7 @@ It is a standalone add-on. It drives Blender's own FBX importers and needs no ot
 | Blender | 3.6 LTS – 5.2+ (legacy add-on on 3.6–4.1, extension on 4.2+) |
 | Platforms | Windows, macOS, Linux |
 | License | GPL-3.0-or-later |
-| Version | 1.2.0 |
+| Version | 1.3.0 |
 
 ---
 
@@ -38,7 +38,7 @@ It is a standalone add-on. It drives Blender's own FBX importers and needs no ot
 - Missing textures are listed with suggestions. Assign or swap any texture slot later without re-importing.
 
 **Game profiles**
-- Built-in profiles: **Generic**, **Genshin Impact**, **Honkai: Star Rail**, **Zenless Zone Zero**, **Honkai Impact 3rd**, **AFK Journey**.
+- Built-in profiles: **Generic**, **Genshin Impact**, **Honkai: Star Rail**, **Zenless Zone Zero**, **Honkai Impact 3rd**, **AFK Journey**, **Wuthering Waves**.
 - Profiles are auto-detected per model and describe naming conventions, Unity material slots, material rules, LOD/collision patterns and rig fixes.
 - Everything a profile adds is labeled: *faithful* (read from the file) vs *inferred* (guessed from names) vs *approximation* (shading that imitates a proprietary game shader).
 - Create, edit, duplicate, export and import profiles as JSON, in the UI.
@@ -53,7 +53,7 @@ It is a standalone add-on. It drives Blender's own FBX importers and needs no ot
 
 ## Quick start
 
-1. Download `hjt_fbx_plus-1.2.0.zip` from the [Releases](https://github.com/Jideeh1/HJT-FBX-PLUS/releases) page (do not unzip it).
+1. Download `hjt_fbx_plus-1.3.0.zip` from the [Releases](https://github.com/Jideeh1/HJT-FBX-PLUS/releases) page (do not unzip it).
 2. Blender 4.2+: *Edit › Preferences › Get Extensions › ⌄ › Install from Disk…*  
    Blender 3.6–4.1: *Edit › Preferences › Add-ons › Install…*  
    Pick the ZIP and enable **HJT FBX+**.

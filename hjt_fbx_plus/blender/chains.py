@@ -121,6 +121,23 @@ def _snap(v):
     return out
 
 
+def _tree(bones):
+    #-> (kids by parent name, descendant count). blenders .children n .children_recursive rescan EVERY
+    # bone per call, so 511 bones = 261k parent lookups n ~2 s gone. one pass here, thats it
+    kids = {}
+    for b in bones:
+        kids.setdefault(b.parent.name if b.parent is not None else None, []).append(b)
+    order = list(kids.get(None, ()))
+    i = 0
+    while i < len(order):
+        order.extend(kids.get(order[i].name, ()))
+        i += 1
+    desc = {}
+    for b in reversed(order):
+        desc[b.name] = sum(desc[c.name] + 1 for c in kids.get(b.name, ()))
+    return kids, desc
+
+
 def _owned_points(arm, meshes, owned=0.3):
     #bone name -> Nx3 array of verts (armature space) that bone really owns. used to size leaves
     out = {}
@@ -183,7 +200,7 @@ def align_chains(arm, meshes=(), compensate=True):
         was_connected = {eb.name for eb in ebs if eb.use_connect}
         for eb in ebs:
             eb.use_connect = False  #connected kids would ride along when we move the tail, nope
-        desc = {eb.name: len(eb.children_recursive) for eb in ebs}
+        kids, desc = _tree(ebs)
         #rough rig size so a root bone cant be 2 meters long lol. 5-95 percentile so one katana bone
         # parked 4m away doesnt make the whole rig "huge"
         heads = [eb.head for eb in ebs]
@@ -207,7 +224,7 @@ def align_chains(arm, meshes=(), compensate=True):
             r_old = old[eb.name].to_3x3()
             cont = new_dir.get(par.name) if par is not None and chosen.get(par.name) == eb.name else None
             old_z = eb.z_axis.copy()
-            child = _pick(eb, list(eb.children), _axes(r_old), desc, cont, far)
+            child = _pick(eb, kids.get(eb.name, []), _axes(r_old), desc, cont, far)
             if child is not None:
                 off = child.head - eb.head
                 d = off.normalized()
@@ -231,7 +248,7 @@ def align_chains(arm, meshes=(), compensate=True):
             eb.align_roll(old_z)
             new_dir[eb.name] = d
             new_len[eb.name] = length
-            for c in eb.children:
+            for c in kids.get(eb.name, ()):
                 visit(c)
 
         for root in [eb for eb in ebs if eb.parent is None]:
@@ -272,7 +289,7 @@ def chain_health(arm):
     hit = _HEALTH.get(key)
     if hit is not None:
         return hit
-    desc = {b.name: len(b.children_recursive) for b in data.bones}
+    kids, desc = _tree(data.bones)
     heads = [b.head_local for b in data.bones]
     ext = []
     for i in range(3):
@@ -284,12 +301,12 @@ def chain_health(arm):
     while stack:
         b, cont = stack.pop()
         y = b.tail_local - b.head_local
-        child = _pick(_RestBone(b), [_RestBone(c) for c in b.children], _axes(b.matrix_local.to_3x3()), desc, cont, far)
+        child = _pick(_RestBone(b), [_RestBone(c) for c in kids.get(b.name, ())], _axes(b.matrix_local.to_3x3()), desc, cont, far)
         if child is not None:
             total += 1
             if y.length > 1e-9 and y.normalized().dot((child.head - b.head_local).normalized()) > 0.995:
                 good += 1
-        for c in b.children:
+        for c in kids.get(b.name, ()):
             nxt = None
             if child is not None and c.name == child.name:
                 nxt = (c.head_local - b.head_local).normalized()
@@ -394,9 +411,97 @@ def _compensate(arm, corr):
     return total
 
 
+def _qmul(a, b):
+    aw, ax, ay, az = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    bw, bx, by, bz = b[..., 0], b[..., 1], b[..., 2], b[..., 3]
+    return np.stack((aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
+                     aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw), axis=-1)
+
+
+def _key_arrays(fc):
+    n = len(fc.keyframe_points)
+    co = np.empty(n * 2, dtype=np.float64)
+    fc.keyframe_points.foreach_get("co", co)
+    return co[0::2], co[1::2]
+
+
 def _fix_bone_keys(pb, c, container, chans, name):
+    #numpy for the usual case (quaternion keys, uniform scale): all frames of a bone in one go instead
+    # of a python matrix dance per frame. 40 clips x 256 bones went from ~2.5 s to a blink.
+    # euler / axis angle / squashy non uniform scale -> the exact per frame path below
     if pb is None:
         return 0
+    if np is None or not any(k[0] == "rotation_quaternion" for k in chans) or             any(k[0] in ("rotation_euler", "rotation_axis_angle") for k in chans):
+        return _fix_bone_keys_slow(pb, c, container, chans, name)
+    keys = {k: _key_arrays(fc) for k, fc in chans.items()}
+    keyed = np.unique(np.round(np.concatenate([t for t, _v in keys.values()]), 4))
+    if not len(keyed):
+        return 0
+    lo, hi = int(math.ceil(keyed[0])), int(math.floor(keyed[-1]))
+    frames = np.union1d(keyed, np.arange(lo, hi + 1, dtype=np.float64)) if hi >= lo else keyed
+    nf = len(frames)
+    base = {"location": tuple(pb.location), "scale": tuple(pb.scale), "rotation_quaternion": _DEFAULTS["rotation_quaternion"]}
+
+    def values(path, n):
+        out = np.empty((nf, n), dtype=np.float64)
+        for i in range(n):
+            k = keys.get((path, i))
+            if k is None:
+                out[:, i] = base[path][i]
+            elif len(k[0]) == nf and np.array_equal(np.round(k[0], 4), frames):
+                out[:, i] = k[1]
+            else:
+                fc = chans[(path, i)]
+                out[:, i] = [fc.evaluate(f) for f in frames]
+        return out
+
+    loc = values("location", 3)
+    rot = values("rotation_quaternion", 4)
+    scale = values("scale", 3)
+    if np.any(scale.max(axis=1) - scale.min(axis=1) > 1e-5):
+        return _fix_bone_keys_slow(pb, c, container, chans, name)
+    rot /= np.maximum(np.linalg.norm(rot, axis=1), 1e-12)[:, None]
+    c3 = c.to_3x3()
+    qc = np.array(tuple(c3.to_quaternion()))
+    qci = qc * np.array((1.0, -1.0, -1.0, -1.0))
+    new_rot = _qmul(_qmul(qci[None, :], rot), qc[None, :])
+    flip = np.concatenate(([1.0], np.where(np.einsum("ij,ij->i", new_rot[1:], new_rot[:-1]) < 0, -1.0, 1.0)))
+    new_rot *= np.cumprod(flip)[:, None]
+    new_loc = loc @ np.array(c3.inverted_safe()).T
+    out = {"location": new_loc, "rotation_quaternion": new_rot, "scale": scale}
+    paths = ["location", "rotation_quaternion"] + (["scale"] if any(k[0] == "scale" for k in chans) else [])
+    group = name
+    any_fc = next(iter(chans.values()))
+    if any_fc.group is not None:
+        group = any_fc.group.name
+    prefs = bpy.context.preferences.edit
+    written = 0
+    flat = np.empty(nf * 2, dtype=np.float64)
+    flat[0::2] = frames
+    for path in paths:
+        for i in range(out[path].shape[1]):
+            vals = out[path][:, i]
+            fc = chans.get((path, i))
+            if fc is None:
+                if np.all(np.abs(vals - _DEFAULTS[path][i]) < 1e-7):
+                    continue
+                fc = _new_fc(container, 'pose.bones["%s"].%s' % (name.replace('"', '\\"'), path), i, group)
+            interp = fc.keyframe_points[0].interpolation if len(fc.keyframe_points) else "LINEAR"
+            kp = fc.keyframe_points
+            kp.clear()
+            kp.add(nf)
+            flat[1::2] = vals
+            kp.foreach_set("co", flat)
+            if interp != prefs.keyframe_new_interpolation_type or prefs.keyframe_new_handle_type != "AUTO_CLAMPED":
+                for k in kp:
+                    k.interpolation = interp
+                    k.handle_left_type = k.handle_right_type = "AUTO_CLAMPED"
+            written += nf
+            fc.update()
+    return written
+
+
+def _fix_bone_keys_slow(pb, c, container, chans, name):
     ci = c.inverted_safe()
     keyed = {round(k.co[0], 4) for fc in chans.values() for k in fc.keyframe_points}
     if not keyed:

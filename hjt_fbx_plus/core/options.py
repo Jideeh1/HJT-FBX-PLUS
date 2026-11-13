@@ -12,7 +12,7 @@ AXES = [("X", "X", ""), ("Y", "Y", ""), ("Z", "Z", ""), ("-X", "-X", ""), ("-Y",
 OPTIONS = {
     #core
     "engine": {"type": "enum", "default": "AUTO", "label": "Import Engine", "items": [
-        ("AUTO", "Auto", "Blender's Python FBX importer (most options); the C++ importer is used automatically for FBX 6.x files"),
+        ("AUTO", "Auto", "Blender's Python FBX importer (most options); the C++ importer is used automatically for FBX 6.x files and animation-heavy files"),
         ("PYTHON", "Python (Legacy)", "io_scene_fbx: supports bone orientation, manual axes and all classic options"),
         ("CPP", "C++ (Fast)", "Blender 4.5+ C++ importer (ufbx): much faster on big files, fewer options")],
         "description": "Which of Blender's FBX importers does the low-level import"},
