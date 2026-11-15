@@ -19,6 +19,11 @@ Most limits come from what Blender can represent, from what Blender's FBX import
 - `.ueanim` and `.uepose` files are not imported; use the UEFormat add-on for those.
 - ZSTD-compressed files need the `zstandard` Python package, which Blender ships.
 
+## OBJ
+
+- OBJ has no skeleton, weights or animation; only meshes, UVs, normals and materials come in.
+- Without a `.mtl`, every texture is matched by file name (inferred, not faithful).
+
 ## Materials and textures
 
 - **Game shaders are approximated.** Toon materials are a two-tone cel shader. Outlines, rim lights, SDF face shadows, light-map driven shading and ramps from proprietary game shaders are not recreated. Their textures are loaded and labeled in the node tree so you can build on them. Everything approximated is labeled as such (see [PROFILES.md](PROFILES.md)).

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import threading
 import time
 
@@ -30,6 +31,7 @@ from ..textures.imageinfo import probe_file
 from ..textures.index import TexEntry, TextureIndex
 from ..textures.slots import SLOTS
 from ..uemodel import ALL_PARTS, is_uemodel, read_uemodel, summarize as ue_summarize
+from .. import objfmt
 
 #these touch bpy, only used from the main thread stages
 import bpy  # noqa: E402
@@ -42,6 +44,14 @@ UE_ENGINE = "UEMODEL"
 class _UEEngine:
     id = UE_ENGINE
     label = "UEFormat (.uemodel)"
+
+
+OBJ_ENGINE = "OBJ"
+
+
+class _OBJEngine:
+    id = OBJ_ENGINE
+    label = "Blender OBJ (C++)"
 
 
 class Source:
@@ -161,6 +171,7 @@ class JobPrep:
         self.base_dir = ""
         self.fatal = ""
         self.ue_parts = None  #[(label, UEModel)] when the source is .uemodel
+        self.obj = None       #{"path", "info"} when the source is .obj
 
     def close(self):
         if self.doc is not None:
@@ -191,7 +202,9 @@ def prepare_job(task, source, opts, services, engine_avail):
 
     reader = aidx = tidx = None
     ue = is_uemodel(source.member or source.path)
+    obj = objfmt.is_obj(source.member or source.path)
     ue_files = []
+    mtl_files = []
     step(0.02, "Locating %s" % source.label)
     if source.is_archive:
         reader, aidx, tidx = services.archive(source.path, source.password)
@@ -203,8 +216,18 @@ def prepare_job(task, source, opts, services, engine_avail):
             entries = [entry] if entry is not None else []
         if not entries:
             raise ArchiveError("'%s' is no longer in %s" % (source.member, os.path.basename(source.path)))
+        if obj:
+            #the .mtl (n anything it names) has to sit next to the obj for blenders importer
+            folder = entries[0].path.rpartition("/")[0]
+            stem = entries[0].path.rsplit(".", 1)[0].lower()
+            entries += [e for e in aidx.files if e.path.lower().endswith(".mtl") and
+                        (e.path.rpartition("/")[0] == folder or e.path.rsplit(".", 1)[0].lower() == stem)]
         got = services.cache.materialize(reader, entries, cancel=cancel)
         for e in entries:
+            if e.path.lower().endswith(".mtl"):
+                prep.extracted.append(got[e.path])
+                mtl_files.append(got[e.path])
+                continue
             prep.extracted.append(got[e.path])
             ue_files.append((os.path.splitext(e.name)[0], got[e.path]))
         prep.local_fbx = got[entries[0].path]
@@ -218,6 +241,9 @@ def prepare_job(task, source, opts, services, engine_avail):
             prep.base_dir = folder.rstrip("\\/").replace("\\", "/")
         elif ue:
             ue_files = [(source.label, source.path)]
+        elif obj:
+            folder = os.path.dirname(source.path)
+            mtl_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(".mtl")]
     prep.timings["locate"] = time.monotonic() - t0
 
     doc = None
@@ -230,6 +256,19 @@ def prepare_job(task, source, opts, services, engine_avail):
                 prep.ue_parts.append((label, read_uemodel(fh.read())))
             step(0.15 + 0.15 * len(prep.ue_parts) / max(1, len(ue_files)), "Reading %s" % label)
         prep.summary = ue_summarize(prep.ue_parts, source.label)
+    elif obj:
+        step(0.15, "Reading OBJ")
+        info = objfmt.scan(prep.local_fbx)
+        wanted = {os.path.basename(m).lower() for m in info["mtllibs"]}
+        mtl = {}
+        for f in mtl_files:
+            if wanted and os.path.basename(f).lower() not in wanted:
+                continue
+            with open(f, "rb") as fh:
+                for k, v in objfmt.read_mtl(fh.read()).items():
+                    mtl.setdefault(k, v)
+        prep.obj = {"path": prep.local_fbx, "info": info}
+        prep.summary = objfmt.summarize(source.member or source.path, info, mtl)
     else:
         step(0.15, "Reading FBX")
         doc = FbxDocument.open(prep.local_fbx, lazy=False, cancel=cancel, lazy_names=PREPARE_LAZY_NODES)
@@ -292,6 +331,12 @@ def prepare_job(task, source, opts, services, engine_avail):
         prep.image_info[key] = probe_file(path)
     prep.timings["extract"] = time.monotonic() - t3
 
+    if obj:
+        prep.engine_id = OBJ_ENGINE
+        if prep.obj["info"]["up"] == "Z":
+            prep.notes.append("OBJ is Z-up (feet on Z = 0): imported without the usual Y-up conversion.")
+        step(1.0, "Ready")
+        return prep
     if ue:
         prep.engine_id = UE_ENGINE
         if len(prep.ue_parts) > 1:
@@ -452,8 +497,68 @@ def _import_ue(context, prep, opts, diag, res):
     return res
 
 
+def _import_obj(context, prep, opts, diag, res):
+    op = getattr(getattr(bpy.ops, "wm", None), "obj_import", None)
+    if op is None:
+        res.error = "This Blender has no OBJ importer (wm.obj_import, Blender 3.3+)"
+        return res
+    compat.ensure_object_mode(context)
+    prev_active = context.view_layer.active_layer_collection
+    coll = _target_collection(context, prep, opts)
+    res.collection = coll
+    res.engine = _OBJEngine
+    compat.set_active_collection(context, coll)
+    before = map_mod.snapshot()
+    z_up = prep.obj["info"]["up"] == "Z"
+    kw = {"filepath": prep.obj["path"], "forward_axis": "Y" if z_up else "NEGATIVE_Z", "up_axis": "Z" if z_up else "Y",
+          "global_scale": float(opts.get("global_scale", 1.0) or 1.0)}
+    try:
+        props = {p.identifier for p in op.get_rna_type().properties}
+        kw = {k: v for k, v in kw.items() if k in props}
+        t = time.monotonic()
+        ret = op(**kw)
+        prep.timings["import"] = time.monotonic() - t
+    except RuntimeError as exc:
+        ret = {"CANCELLED"}
+        res.error = str(exc).strip().splitlines()[-1] if str(exc).strip() else "OBJ import failed"
+    finally:
+        try:
+            context.view_layer.active_layer_collection = prev_active
+        except Exception:  # noqa: BLE001
+            pass
+    res.new = map_mod.diff(before)
+    if "FINISHED" not in ret:
+        res.error = res.error or "Blender could not import this OBJ"
+        _discard(res.new)
+        return res
+    mp = map_mod.Mapping()
+    meshes = [o for o in res.new.get("objects", []) if o.type == "MESH"]
+    for o in res.new.get("objects", []):
+        mp.objects["obj:" + o.name] = o
+        if o.type == "MESH":
+            mp.meshes["obj:" + o.name] = o.data
+    made = {re.sub(r"\.\d{3,}$", "", m.name): m for m in res.new.get("materials", [])}
+    for m in prep.summary["materials"]:
+        mat = made.get(m["name"])
+        if mat is None and not prep.obj["info"]["materials"]:
+            #no usemtl at all: one material named after the model so textures have somewhere to go
+            mat = bpy.data.materials.new(m["name"])
+            for o in meshes:
+                if not o.data.materials:
+                    o.data.materials.append(mat)
+            res.new.setdefault("materials", []).append(mat)
+        if mat is not None:
+            mp.materials[m["uid"]] = mat
+    mp.exact = True
+    res.mapping = mp
+    res.ok = True
+    return res
+
+
 def import_job(context, prep, opts, diag):
     res = ImportResult()
+    if prep.obj is not None:
+        return _import_obj(context, prep, opts, diag, res)
     if prep.ue_parts is not None:
         return _import_ue(context, prep, opts, diag, res)
     model = prep.source.label
@@ -532,6 +637,7 @@ def finish_job(context, prep, res, opts, diag, image_cache, cache_root=""):
     profile = prep.profile
     mp = res.mapping
     importer_images = list(res.new.get("images", []))
+    ours = []
     #materials
     mode_override = opts.get("material_mode", "PROFILE")
     template_mat = opts.get("template_material", "")
@@ -563,6 +669,7 @@ def finish_job(context, prep, res, opts, diag, image_cache, cache_root=""):
                 diag.warning(str(exc), model)
                 continue
             loaded[a] = img
+            ours.append(img)
             info[img.name] = prep.image_info.get(a.tex.key, {})
         color_attr = ""
         for ob in mp.objects.values():
@@ -596,7 +703,7 @@ def finish_job(context, prep, res, opts, diag, image_cache, cache_root=""):
         for miss in plan.missing:
             diag.warning("Missing texture for '%s' (%s): %s" % (plan.name, miss.get("slot"), miss.get("name")), model)
         report["materials"].append(dict(plan.as_dict(), shading=meta["shading"]))
-    removed = img_mod.remove_unused(importer_images)
+    removed = img_mod.remove_unused(importer_images, ours)
     prep.timings["materials"] = time.monotonic() - t
 
     #mesh level stuff

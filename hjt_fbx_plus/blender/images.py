@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import filecmp
 import os
+import re
 import shutil
 
 import bpy
@@ -162,8 +163,9 @@ def _free_name(folder, base, used):
         n += 1
 
 
-def remove_unused(images):
-    #drop images the fbx importer made that nothing uses anymore after we rebuilt materials
+def remove_unused(images, ours=()):
+    #drop images the fbx/obj importer made that nothing uses anymore after we rebuilt materials.
+    # ours (from the image cache) then get their clean name back: crate.png.001 -> crate.png
     n = 0
     for img in images:
         try:
@@ -172,4 +174,13 @@ def remove_unused(images):
                 n += 1
         except ReferenceError:
             continue
+    if n:
+        for img in ours:
+            try:
+                name = img.name
+            except ReferenceError:
+                continue
+            base = re.sub(r"\.\d{3}$", "", name)
+            if base != name and base not in bpy.data.images:
+                img.name = base
     return n

@@ -16,6 +16,7 @@ from ..archives.base import ArchiveError, BackendUnavailable, PasswordRequired, 
 from ..fbx.document import FbxDocument, sniff_fbx
 from ..fbx.inspect import inspect_document
 from ..uemodel import ALL_PARTS, EXT as UE_EXT, is_uemodel, read_uemodel, summarize as ue_summarize
+from .. import objfmt
 from ..profiles.detect import detect as detect_profile
 from ..textures.discovery import plan_materials
 
@@ -25,7 +26,7 @@ class SourceState:
         self.path = os.path.abspath(path)
         self.label = os.path.basename(path)
         low = path.lower()
-        self.kind = "FBX" if low.endswith((".fbx", UE_EXT)) else ("ZIP" if low.endswith(".zip") else ("RAR" if (low.endswith(".rar")) else ("7Z" if ".7z" in low else "FOLDER")))
+        self.kind = "FBX" if low.endswith((".fbx", UE_EXT, ".obj")) else ("ZIP" if low.endswith(".zip") else ("RAR" if (low.endswith(".rar")) else ("7Z" if ".7z" in low else "FOLDER")))
         if os.path.isdir(path):
             self.kind = "FOLDER"
         self.password = None
@@ -113,7 +114,7 @@ class Session:
                 continue
             if not os.path.isfile(p):
                 continue
-            if p.lower().endswith((".fbx", UE_EXT)):
+            if p.lower().endswith((".fbx", UE_EXT, ".obj")):
                 src = self.sources.get(p) or SourceState(p)
                 src.status = "READY"
                 src.size = os.path.getsize(p)
@@ -147,7 +148,7 @@ class Session:
                 found.append(os.path.join(root, ALL_PARTS))  #body + face + hair... = one character, one rig
             for f in sorted(files):
                 full = os.path.join(root, f)
-                if f.lower().endswith(".fbx") or is_archive_path(f) or (len(ue) == 1 and is_uemodel(f)):
+                if f.lower().endswith((".fbx", ".obj")) or is_archive_path(f) or (len(ue) == 1 and is_uemodel(f)):
                     found.append(full)
         return self.add_paths(found, auto_analyze=auto_analyze, options=options) if found else []
 
@@ -174,14 +175,14 @@ class Session:
             src.entries = st["files"]
             src.fbx = st["fbx"]
             src.images = st["images"]
-            src.message = "%d models, %d images, %d files" % (st["fbx"], st["images"], st["files"])
+            src.message = "%d models, %d images, %d files" % (st["fbx"], st["images"], st["files"])  #fbx, uemodel n obj
             new = []
             for m in _all_parts_models(src, aidx.fbx) + [ModelState(src.key, src.path, e.path, e.size) for e in aidx.fbx]:
                 if m.key not in self.models:
                     self.models[m.key] = m
                     new.append(m.key)
             if not aidx.fbx:
-                src.message = "No FBX or UEModel files in this archive"
+                src.message = "No FBX, UEModel or OBJ files in this archive"
             self.changed()
             if auto_analyze and new:
                 self.analyze(new, options)
@@ -328,6 +329,16 @@ def _analyze_model(task, path, member, password, services, opts):
             with open(f, "rb") as fh:
                 parts.append((os.path.splitext(os.path.basename(f))[0], read_uemodel(fh.read())))
         summary = ue_summarize(parts)
+    elif objfmt.is_obj(member or path):
+        info = objfmt.scan(local)
+        mtl = {}
+        folder = os.path.dirname(local)
+        for f in os.listdir(folder):
+            if f.lower().endswith(".mtl"):
+                with open(os.path.join(folder, f), "rb") as fh:
+                    for k, v in objfmt.read_mtl(fh.read()).items():
+                        mtl.setdefault(k, v)
+        summary = objfmt.summarize(member or path, info, mtl)
     else:
         with FbxDocument.open(local, lazy=True, cancel=task.cancel) as doc:
             summary = inspect_document(doc, deep=True, cancel=task.cancel)

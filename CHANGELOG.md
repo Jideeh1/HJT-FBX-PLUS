@@ -2,6 +2,17 @@
 
 All notable changes to HJT FBX+ are documented here. The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-11-16
+
+### Added
+- OBJ import (loose, in archives and in Import Folder) through Blender's built-in OBJ importer, with the up axis detected from the geometry (Z-up rips stand upright).
+- Textures for OBJs without a material file: one material named after the model, maps matched by name, and numbered colour variants (`_002_D`, `_003_D`...) added as spare image nodes. `.mtl` texture links are used as faithful sources when present.
+- ZZZ profile now recognises NPC textures (`NPC_..._001_D`), so their `_A`/`_M` maps are read as masks instead of transparency.
+
+### Fixed
+- Several auxiliary textures of the same kind (e.g. `_A` and `_M` masks) are all kept instead of one being dropped as "ambiguous".
+- Images that clashed with ones the importer had loaded keep their own name instead of `.001`.
+
 ## [1.4.0] - 2026-11-15
 
 ### Added

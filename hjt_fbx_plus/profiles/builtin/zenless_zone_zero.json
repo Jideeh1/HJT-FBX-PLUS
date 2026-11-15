@@ -10,7 +10,8 @@
     "rules": [
       {"target": "material", "pattern": "(?i)^MAT_.+_UI$", "weight": 3},
       {"target": "texture", "pattern": "(?i)_(Body|Hair|Face|Weapon|Eye)\\d*_[DNMA]$", "weight": 2},
-      {"target": "mesh", "pattern": "(?i)HairShadow", "weight": 1}
+      {"target": "mesh", "pattern": "(?i)HairShadow", "weight": 1},
+      {"target": "texture", "pattern": "(?i)^NPC_\\w+_\\d{3}_[DNMA]$", "weight": 3}
     ]
   },
   "textures": {

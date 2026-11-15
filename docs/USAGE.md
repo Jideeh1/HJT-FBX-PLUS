@@ -38,6 +38,10 @@ Model preview (the active model):
 - Textures: **faithful** (linked in the FBX or listed in a material JSON), **inferred** (found by naming rules), **missing**.
 - Issues found while reading the file (e.g. in-between shapes, unsupported features, missing textures) and the first animation clips.
 
+### OBJ files
+
+`.obj` files import like FBX, loose or from an archive, with Blender's built-in OBJ importer. The up axis is detected from the geometry: a model whose feet sit on Z = 0 is imported Z-up without conversion, everything else as standard Y-up. Textures linked in a `.mtl` file are used as they are. Without a `.mtl`, the model gets one material named after the file (without `_LOD0`) and textures are matched by name, including numbered colour variants: for `Dog_Body_001.obj`, the `Dog_Body_001_001_*` maps build the material and `Dog_Body_001_002_D`, `_003_D`... are added as unconnected image nodes ready to swap in.
+
 ### Import a folder
 
 **Import Folder** (sidebar, or *File › Import › HJT FBX+ Folder*) imports every FBX, UEModel and archive in a folder and its subfolders: one model per file or archive (an archive's merged *all parts* character when it has one, otherwise its best match), lined up side by side along X with an adjustable gap. Loose `.uemodel` parts in the same folder are merged onto one armature.

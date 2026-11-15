@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "hjt_fbx_plus"
-version = "1.4.0"
+version = "1.5.0"
 name = "HJT FBX+"
 tagline = "Advanced FBX & UEModel Game Asset Importer"
 maintainer = "HJT Studio"
@@ -21,7 +21,7 @@ copyright = [
 ]
 
 [permissions]
-files = "Import FBX files or FBX inside ZIP/7Z/RAR archives (extracted to a temporary cache), save profiles and reports"
+files = "Import FBX, UEModel and OBJ files, or models inside ZIP/7Z/RAR archives (extracted to a temporary cache), save profiles and reports"
 network = "Checks GitHub (github.com/Jideeh1/HJT-FBX-PLUS) for new releases and downloads updates; optional pip packages for exotic 7z archives when you press Install"
 
 [build]

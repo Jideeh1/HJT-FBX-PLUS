@@ -23,7 +23,7 @@ from ...uemodel import ALL_PARTS
 from .. import sync
 from ..props import profile_items, snapshot
 
-FILTER = "*.fbx;*.uemodel;*.zip;*.7z;*.rar;*.001"
+FILTER = "*.fbx;*.uemodel;*.obj;*.zip;*.7z;*.rar;*.001"
 NAV_EVENTS = {"MOUSEMOVE", "INBETWEEN_MOUSEMOVE", "MIDDLEMOUSE", "WHEELUPMOUSE", "WHEELDOWNMOUSE", "TRACKPADPAN",
               "TRACKPADZOOM", "TIMER_REPORT", "WINDOW_DEACTIVATE"}
 LISTING_TIMEOUT = 180.0
@@ -109,7 +109,7 @@ def watch_archive(path, member=""):
             return None
         models = [m for m in st.session.models.values() if m.source_key == src.key]
         if not models:
-            _popup(src.label, ["No FBX or UEModel files in this archive"], icon="INFO")
+            _popup(src.label, ["No FBX, UEModel or OBJ files in this archive"], icon="INFO")
             return None
         if member:
             hit = next((m for m in models if m.member == member), None)
@@ -199,7 +199,7 @@ def watch_folder(folder, lineup=True, spacing=0.5):
             return 0.2
         wm.status_text = ""
         if not select_one_per_source(st):
-            _popup("HJT FBX+", ["No FBX, UEModel or archives found in %s" % os.path.basename(folder)], icon="INFO")
+            _popup("HJT FBX+", ["No FBX, UEModel, OBJ or archives found in %s" % os.path.basename(folder)], icon="INFO")
             return None
         with bpy.context.temp_override(**_ctx_override()):
             bpy.ops.hjt_fbx_plus.run("INVOKE_DEFAULT", lineup=lineup, spacing=spacing)
@@ -225,7 +225,7 @@ class HJTFBX_OT_import(bpy.types.Operator, ImportHelper):
     #1 model in, 1 model out. loose fbx or an fbx inside a zip / 7z / rar. no queue no folder scanning
     bl_idname = "hjt_fbx_plus.import_files"
     bl_label = "Import FBX/UEMODEL"
-    bl_description = "Import one FBX or UEModel, or one model from a ZIP / 7Z / RAR archive, with HJT FBX+"
+    bl_description = "Import one FBX, UEModel or OBJ, or one model from a ZIP / 7Z / RAR archive, with HJT FBX+"
     bl_options = {"REGISTER", "UNDO", "PRESET"}
 
     filename_ext = ".fbx"
@@ -274,11 +274,11 @@ class HJTFBX_OT_import(bpy.types.Operator, ImportHelper):
             return {"CANCELLED"}
         path = bpy.path.abspath(self.filepath)
         if not path or not os.path.isfile(path):
-            self.report({"WARNING"}, "Pick an .fbx, .uemodel, .zip, .7z or .rar file")
+            self.report({"WARNING"}, "Pick an .fbx, .uemodel, .obj, .zip, .7z or .rar file")
             return {"CANCELLED"}
-        is_fbx = path.lower().endswith((".fbx", ".uemodel"))
+        is_fbx = path.lower().endswith((".fbx", ".uemodel", ".obj"))
         if not is_fbx and not is_archive_path(path):
-            self.report({"WARNING"}, "HJT FBX+ imports .fbx / .uemodel files or .zip / .7z / .rar archives")
+            self.report({"WARNING"}, "HJT FBX+ imports .fbx / .uemodel / .obj files or .zip / .7z / .rar archives")
             return {"CANCELLED"}
         settings = context.scene.hjt_fbx_plus
         if self.profile and self.profile != settings.profile:
@@ -328,7 +328,7 @@ class HJTFBX_OT_import_folder(bpy.types.Operator):
     #every character in a folder in one go, lined up next to each other
     bl_idname = "hjt_fbx_plus.import_folder"
     bl_label = "Import Folder"
-    bl_description = ("Import every FBX, UEModel and archive in a folder (and its subfolders), one model per file, "
+    bl_description = ("Import every FBX, UEModel, OBJ and archive in a folder (and its subfolders), one model per file, "
                       "lined up side by side")
     bl_options = {"REGISTER", "UNDO"}
 
@@ -376,7 +376,7 @@ class HJTFBX_OT_import_folder(bpy.types.Operator):
         st.session.clear()
         st.session.add_folder(folder, auto_analyze=False, options=snapshot(settings))
         if not st.session.sources:
-            self.report({"WARNING"}, "No FBX, UEModel or archives found in %s" % os.path.basename(folder))
+            self.report({"WARNING"}, "No FBX, UEModel, OBJ or archives found in %s" % os.path.basename(folder))
             return {"CANCELLED"}
         context.window_manager.hjt_fbx_plus.status_text = "Reading %s..." % os.path.basename(folder)
         watch_folder(folder, self.lineup, self.spacing)

@@ -199,6 +199,21 @@ class _Planner:
                 continue
             if plan.has(slot) and not SLOTS.get(slot, {}).get("aux"):
                 continue
+            if SLOTS.get(slot, {}).get("aux"):
+                #_A n _M r both masks but different textures, keep both. ambiguous only means the same
+                # file name in 2 folders
+                stems = {}
+                for e in entries:
+                    stems.setdefault(e.stem_l, []).append(e)
+                for stem, group in sorted(stems.items()):
+                    best, tied = self._closest(group)
+                    if best is None:
+                        continue
+                    tag = stem[len(base):].strip("_-. ").upper() or stem
+                    self._add(plan, Assignment(slot, best, source, confidence, unity_slot=tag,
+                                               alternatives=[e for e in group if e is not best], ambiguous=tied, note=note))
+                    found += 1
+                continue
             best, tied = self._closest(entries)
             if best is None:
                 continue
@@ -209,6 +224,27 @@ class _Planner:
                     SLOTS[slot]["label"], plan.name, best.path, ", ".join(a.path for a in alts[:2])))
             found += 1
         return found
+
+    def _variants(self, p, keys):
+        #Body_001 -> Body_001_001_D, _002_D, _003_D: numbered skins of the same model (zzz npcs, most
+        # obj rips w/o a material). lowest number is the real material, the rest ride along as spare
+        #colour maps u can swap in, wired to nothing
+        for k in keys:
+            if not k:
+                continue
+            rx = re.compile(re.escape(k) + r"[_\-. ]?(\d{1,4})$")
+            found = sorted((int(mt.group(1)), base) for base in self.classified if (mt := rx.match(base)))
+            if not found:
+                continue
+            if not self._by_base(p, found[0][1], "name-match", 0.8):
+                continue
+            for num, base in found[1:]:
+                for slot, e in self.classified[base]:
+                    if slot in ("base_color", None):
+                        self._add(p, Assignment("aux", e, "name-match", 0.6, unity_slot="Variant %03d" % num,
+                                                note="colour variant %03d (not connected)" % num))
+            return True
+        return False
 
     #main
     def plan_material(self, m, material_count):
@@ -336,6 +372,8 @@ class _Planner:
             for k in keys:
                 if k and self._by_base(p, k, "name-match", 0.7):
                     break
+            if not p.has("base_color"):
+                self._variants(p, keys)
             if not p.has("base_color"):
                 #partial: texture base ends w the material key or the other way round (Body vs Char_Body)
                 k = keys[0] if keys else ""
