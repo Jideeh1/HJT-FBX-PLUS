@@ -9,7 +9,7 @@ from __future__ import annotations
 import bpy
 from bpy.props import BoolProperty
 
-from ...blender import chains
+from ...blender import chains, origin
 
 
 def _target_armatures(context):
@@ -58,4 +58,34 @@ class HJTFBX_OT_align_chains(bpy.types.Operator):
         return {"FINISHED"}
 
 
-CLASSES = (HJTFBX_OT_align_chains,)
+class HJTFBX_OT_center_origin(bpy.types.Operator):
+    bl_idname = "hjt_fbx_plus.center_origin"
+    bl_label = "Center Origin"
+    bl_description = ("Zero the armature rotation and scale and put the origin on the floor under the hips. "
+                      "Mesh, poses and animation stay where they are")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        if context.mode != "OBJECT":
+            cls.poll_message_set("Switch to Object mode")
+            return False
+        if not _target_armatures(context):
+            cls.poll_message_set("Select an armature (or a mesh skinned to one)")
+            return False
+        return True
+
+    def execute(self, context):
+        done = 0
+        from ...core.log import Diagnostics
+        diag = Diagnostics()
+        for arm in _target_armatures(context):
+            if origin.center_character(arm, diag):
+                done += 1
+        notes = [m["text"] for m in diag.messages if m["level"] != "INFO" or "left alone" in m["text"]]
+        self.report({"INFO"}, ("Centered %d armature%s" % (done, "" if done == 1 else "s")) if done else
+                    (notes[0] if notes else "Already centered"))
+        return {"FINISHED"}
+
+
+CLASSES = (HJTFBX_OT_align_chains, HJTFBX_OT_center_origin)

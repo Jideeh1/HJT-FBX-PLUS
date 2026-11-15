@@ -38,6 +38,14 @@ Model preview (the active model):
 - Textures: **faithful** (linked in the FBX or listed in a material JSON), **inferred** (found by naming rules), **missing**.
 - Issues found while reading the file (e.g. in-between shapes, unsupported features, missing textures) and the first animation clips.
 
+### Import a folder
+
+**Import Folder** (sidebar, or *File › Import › HJT FBX+ Folder*) imports every FBX, UEModel and archive in a folder and its subfolders: one model per file or archive (an archive's merged *all parts* character when it has one, otherwise its best match), lined up side by side along X with an adjustable gap. Loose `.uemodel` parts in the same folder are merged onto one armature.
+
+### Center Origin
+
+On by default (*Armature › Center Origin*). For characters, the armature's rotation and scale are applied (Unity rips usually arrive rotated 90° on X) and the origin is placed on the floor under the hips; every skinned mesh shares that origin. The mesh, poses and animation do not move. Characters whose armature object itself is animated are left alone. The **Center Origin** button in the selected-armature panel does the same for models already in the scene.
+
 ### UEModel files
 
 `.uemodel` files (FModel / UEFormat exports) import like FBX: pick one in the file browser, drop it on the 3D View, or pick an archive that contains them. FModel material JSON files next to the model (or in a `Materials` folder) are used to wire textures. When a folder holds several parts of one character (body, face, hair...), the archive picker lists **<folder> (all N parts)** first; it imports every part onto one shared armature. Bone chains on UEModel rigs are always aligned when *Align Bone Chains* is set to *From Profile*, because raw Unreal bone axes point sideways in Blender.

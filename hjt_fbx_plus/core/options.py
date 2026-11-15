@@ -99,6 +99,8 @@ OPTIONS = {
         ("ON", "On", "Point every bone at the next bone of its chain; animation is re-expressed so nothing moves"),
         ("OFF", "Off", "Keep the importer's bone directions")],
         "description": "Fix bone chains from game rips: tails point at the next joint, rolls kept, mesh and animation unchanged"},
+    "fix_origin": {"type": "bool", "default": True, "label": "Center Origin",
+                   "description": "Characters: zero the armature rotation and scale and put the origin on the floor under the hips (mesh, poses and animation stay where they are)"},
     "fit_bones": {"type": "enum", "default": "PROFILE", "label": "Fit Bone Lengths", "items": [
         ("PROFILE", "From Profile", "Fit bone lengths when the game profile asks for it"),
         ("ON", "On", "Size bones to reach their child joint (display only, deformation unchanged)"),

@@ -13,6 +13,7 @@ from ..blender import compat
 
 def menu_import(self, context):
     self.layout.operator("hjt_fbx_plus.import_files", text="HJT FBX+ (.fbx, .uemodel, .zip, .7z, .rar)")
+    self.layout.operator("hjt_fbx_plus.import_folder", text="HJT FBX+ Folder (batch, lined up)")
 
 
 CLASSES = []

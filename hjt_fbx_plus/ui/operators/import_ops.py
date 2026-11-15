@@ -10,8 +10,9 @@ import os
 import time
 
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatProperty, StringProperty
 from bpy_extras.io_utils import ImportHelper
+from mathutils import Vector
 
 from ... import state
 from ...archives import is_archive_path
@@ -120,6 +121,88 @@ def watch_archive(path, member=""):
             return None
         with bpy.context.temp_override(**_ctx_override()):
             bpy.ops.hjt_fbx_plus.pick_model("INVOKE_DEFAULT", path=path)
+        return None
+
+    bpy.app.timers.register(tick, first_interval=0.1)
+
+
+def _alive(ob):
+    try:
+        return ob.name is not None
+    except ReferenceError:
+        return False
+
+
+def _bbox_x(roots):
+    lo = hi = None
+    stack = list(roots)
+    while stack:
+        ob = stack.pop()
+        stack.extend(ob.children)
+        if ob.type not in ("MESH", "CURVE", "SURFACE", "FONT"):
+            continue
+        for c in ob.bound_box:
+            x = (ob.matrix_world @ Vector(c)).x
+            lo = x if lo is None or x < lo else lo
+            hi = x if hi is None or x > hi else hi
+    if lo is None:
+        x = roots[0].matrix_world.translation.x
+        return x - 0.25, x + 0.25
+    return lo, hi
+
+
+def line_up(groups, spacing=0.5):
+    #batch import: every model side by side on X, the whole row centred on the world origin
+    bpy.context.view_layer.update()
+    spans = [_bbox_x(g) for g in groups]
+    total = sum(hi - lo for lo, hi in spans) + spacing * (len(groups) - 1)
+    cursor = -total / 2.0
+    for g, (lo, hi) in zip(groups, spans):
+        dx = cursor - lo
+        for ob in g:
+            ob.location.x += dx
+        cursor += (hi - lo) + spacing
+    bpy.context.view_layer.update()
+
+
+def select_one_per_source(st):
+    #-> number of models picked. an archive w body/face/hair/... gets its merged character, not 5 imports
+    by_src = {}
+    for m in st.session.models.values():
+        by_src.setdefault(m.source_key, []).append(m)
+    for key, models in by_src.items():
+        src = st.session.sources.get(key)
+        best = _rank(models, src.path if src else key)[0]
+        for m in models:
+            m.selected = m is best
+    st.session.changed()
+    return len(by_src)
+
+
+def watch_folder(folder, lineup=True, spacing=0.5):
+    #waits till every archive in the folder is listed, then one model per source: the merged ue
+    # character if theres one, else the best guess (same ranking the archive picker uses)
+    t0 = time.monotonic()
+
+    def tick():
+        st = state.get()
+        if st is None or st.batch is not None:
+            return None
+        wm = bpy.context.window_manager.hjt_fbx_plus
+        busy = [s for s in st.session.sources.values() if s.status in ("PENDING", "LISTING")]
+        if busy:
+            if time.monotonic() - t0 > LISTING_TIMEOUT:
+                wm.status_text = ""
+                _popup("HJT FBX+", ["Reading the archives in %s took too long" % os.path.basename(folder)])
+                return None
+            wm.status_text = "Reading %d archive%s..." % (len(busy), "" if len(busy) == 1 else "s")
+            return 0.2
+        wm.status_text = ""
+        if not select_one_per_source(st):
+            _popup("HJT FBX+", ["No FBX, UEModel or archives found in %s" % os.path.basename(folder)], icon="INFO")
+            return None
+        with bpy.context.temp_override(**_ctx_override()):
+            bpy.ops.hjt_fbx_plus.run("INVOKE_DEFAULT", lineup=lineup, spacing=spacing)
         return None
 
     bpy.app.timers.register(tick, first_interval=0.1)
@@ -241,6 +324,65 @@ def _size(n):
     return ""
 
 
+class HJTFBX_OT_import_folder(bpy.types.Operator):
+    #every character in a folder in one go, lined up next to each other
+    bl_idname = "hjt_fbx_plus.import_folder"
+    bl_label = "Import Folder"
+    bl_description = ("Import every FBX, UEModel and archive in a folder (and its subfolders), one model per file, "
+                      "lined up side by side")
+    bl_options = {"REGISTER", "UNDO"}
+
+    directory: StringProperty(subtype="DIR_PATH", options={"SKIP_SAVE"})
+    filter_folder: BoolProperty(default=True, options={"HIDDEN"})
+    lineup: BoolProperty(name="Line Up", default=True, description="Place the models side by side along X")
+    spacing: FloatProperty(name="Gap", default=0.5, min=0.0, soft_max=5.0, subtype="DISTANCE",
+                           description="Space between the lined up models")
+    profile: EnumProperty(name="Game Profile", items=profile_items,
+                          description="Game profile for texture discovery and material reconstruction")
+
+    @classmethod
+    def poll(cls, context):
+        st = state.get()
+        return st is not None and st.batch is None
+
+    def invoke(self, context, event):
+        try:
+            self.profile = context.scene.hjt_fbx_plus.profile
+        except (TypeError, AttributeError):
+            pass
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.use_property_split = True
+        col.use_property_decorate = False
+        col.prop(self, "profile")
+        col.prop(self, "lineup")
+        sub = col.row()
+        sub.active = self.lineup
+        sub.prop(self, "spacing")
+        col.prop(context.scene.hjt_fbx_plus, "fix_origin")
+
+    def execute(self, context):
+        st = state.get()
+        folder = bpy.path.abspath(self.directory).rstrip("\\/")
+        if not folder or not os.path.isdir(folder):
+            self.report({"WARNING"}, "Pick a folder")
+            return {"CANCELLED"}
+        settings = context.scene.hjt_fbx_plus
+        if self.profile and self.profile != settings.profile:
+            settings.profile = self.profile
+        st.session.clear()
+        st.session.add_folder(folder, auto_analyze=False, options=snapshot(settings))
+        if not st.session.sources:
+            self.report({"WARNING"}, "No FBX, UEModel or archives found in %s" % os.path.basename(folder))
+            return {"CANCELLED"}
+        context.window_manager.hjt_fbx_plus.status_text = "Reading %s..." % os.path.basename(folder)
+        watch_folder(folder, self.lineup, self.spacing)
+        return {"FINISHED"}
+
+
 class HJTFBX_OT_pick_model(bpy.types.Operator):
     bl_idname = "hjt_fbx_plus.pick_model"
     bl_label = "Pick a Model"
@@ -315,6 +457,8 @@ class HJTFBX_OT_run(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     sources: StringProperty(options={"HIDDEN", "SKIP_SAVE"})  #newline separated paths: import just these
+    lineup: BoolProperty(options={"HIDDEN", "SKIP_SAVE"})
+    spacing: FloatProperty(default=0.5, options={"HIDDEN", "SKIP_SAVE"})
 
     @classmethod
     def poll(cls, context):
@@ -352,6 +496,7 @@ class HJTFBX_OT_run(bpy.types.Operator):
         self.images = img_mod.ImageCache(reuse_existing=self.opts.get("reuse_images", True))
         self.extracted = []
         self.prefetched = set()
+        self.placed = []
         st.batch = self
         wm = context.window_manager
         wm.progress_begin(0, 1000)
@@ -515,6 +660,10 @@ class HJTFBX_OT_run(bpy.types.Operator):
             return {"RUNNING_MODAL"}
         if self.stage == "FINISH":
             rep = pipeline.finish_job(context, self.prep, self.res, self.opts, self.diag, self.images, st.cache.session)
+            if self.lineup:
+                roots = [o for o in self.res.new.get("objects", []) if _alive(o) and o.parent is None]
+                if roots:
+                    self.placed.append(roots)
             self._record(self.current, "OK", rep)
             self.current.status = "IMPORTED"
             self.current.selected = False
@@ -581,6 +730,8 @@ class HJTFBX_OT_run(bpy.types.Operator):
             context.workspace.status_text_set(None)
         except AttributeError:
             pass
+        if self.lineup and len(self.placed) > 1:
+            line_up(self.placed, self.spacing)
         #nothing from the model stays behind: extracted files, prepared copies, the archive's model list
         st.cache.release_files(self.extracted)
         st.cache.cleanup_session()
@@ -630,4 +781,4 @@ class HJTFBX_OT_cancel(bpy.types.Operator):
         return {"FINISHED"}
 
 
-CLASSES = (HJTFBX_OT_import, HJTFBX_OT_pick_model, HJTFBX_OT_archive_password, HJTFBX_OT_run, HJTFBX_OT_cancel)
+CLASSES = (HJTFBX_OT_import, HJTFBX_OT_import_folder, HJTFBX_OT_pick_model, HJTFBX_OT_archive_password, HJTFBX_OT_run, HJTFBX_OT_cancel)

@@ -34,7 +34,7 @@ from ..uemodel import ALL_PARTS, is_uemodel, read_uemodel, summarize as ue_summa
 #these touch bpy, only used from the main thread stages
 import bpy  # noqa: E402
 
-from . import chains, compat, engines, images as img_mod, mapping as map_mod, materials, postprocess, uebuild  # noqa: E402
+from . import chains, compat, engines, images as img_mod, mapping as map_mod, materials, origin, postprocess, uebuild  # noqa: E402
 
 UE_ENGINE = "UEMODEL"
 
@@ -619,6 +619,15 @@ def finish_job(context, prep, res, opts, diag, image_cache, cache_root=""):
         postprocess.rebuild_inbetweens(prep.prep_result.inbetweens, mp, diag, model)
     arms = {o for o in mp.objects.values() if o.type == "ARMATURE"} | {v[0] for v in mp.bones.values()}
     meshes = [o for o in mp.objects.values() if o.type == "MESH"]
+    if opts.get("fix_origin", True):
+        for arm in arms:
+            try:
+                r = origin.center_character(arm, diag, model)
+            except (RuntimeError, ValueError) as exc:
+                diag.warning("Origin fix skipped on '%s': %s" % (arm.name, exc), model)
+                continue
+            if r:
+                diag.info("Centered '%s': rotation/scale applied, origin moved %.2f m to the floor under the hips." % (arm.name, r["moved"]), model)
     aligned_arms = set()
     al = opts.get("align_chains", "PROFILE")
     #raw ue axes point every bone sideways no matter the game, so From Profile always aligns those

@@ -16,7 +16,7 @@ from __future__ import annotations
 import bpy
 
 from .. import state
-from ..blender import chains, compat, updater
+from ..blender import chains, compat, origin, updater
 from ..blender.materials import META_PROP
 from . import prefs as prefs_mod
 
@@ -171,6 +171,7 @@ class HJTFBX_PT_main(_Base, bpy.types.Panel):
             r = col.row(align=True)
             r.scale_y = 1.8
             r.operator("hjt_fbx_plus.import_files", text="Import FBX/UEMODEL", icon="IMPORT")
+            col.operator("hjt_fbx_plus.import_folder", text="Import Folder", icon="FILE_FOLDER")
             if wm.status_text:
                 #archive still being read in the background
                 compat.draw_progress(col, 0.5, wm.status_text, ring=True)
@@ -243,6 +244,7 @@ class HJTFBX_PT_main(_Base, bpy.types.Panel):
                 n.active = False
                 n.label(text="Chain alignment already sizes bones", icon="CHECKMARK")
             c.prop(s, "verify_skinning")
+            c.prop(s, "fix_origin")
             c.prop(s, "ignore_leaf_bones")
             py = s.engine != "CPP"
             sub = c.column()
@@ -378,6 +380,10 @@ class HJTFBX_PT_selected(_Base, bpy.types.Panel):
         r.scale_y = 1.3
         r.alert = frac < 0.6
         r.operator("hjt_fbx_plus.align_chains", text="Align Bone Chains" if frac < 0.95 else "Re-align Chains", icon="BONE_DATA")
+        off, why = origin.needs_fix(arm)
+        r = layout.row()
+        r.alert = off
+        r.operator("hjt_fbx_plus.center_origin", text="Center Origin" + (" (%s off)" % why if off else ""), icon="PIVOT_CURSOR")
         if arm.animation_data and (arm.animation_data.action or arm.animation_data.nla_tracks):
             n = layout.row()
             n.active = False

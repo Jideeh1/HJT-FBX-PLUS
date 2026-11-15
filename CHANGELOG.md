@@ -2,6 +2,13 @@
 
 All notable changes to HJT FBX+ are documented here. The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-11-15
+
+### Added
+- **Import Folder**: imports every FBX, UEModel and archive in a folder (one model each, merged UE characters for multi-part folders and archives) and lines them up side by side.
+- **Center Origin** (on by default, plus a button for existing models): applies the armature's rotation and scale and puts the origin on the floor under the hips, with every skinned mesh sharing it. Mesh, poses and animation stay exactly in place.
+- Punishing: Gray Raven profile: detected from `R2<Name>Md010011` names, reads the DXT5nm (AG) normal maps and the suffix-without-underscore texture names.
+
 ## [1.3.0] - 2026-11-13
 
 ### Added

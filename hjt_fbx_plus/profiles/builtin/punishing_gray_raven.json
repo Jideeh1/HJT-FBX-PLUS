@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "id": "punishing_gray_raven",
+  "name": "Punishing: Gray Raven",
+  "description": "Punishing: Gray Raven exports (R2<Name>Md010011 materials with a Materials/ folder of Unity JSON). _MainTex is the base color, the NM normal map is DXT5nm (X in alpha, Y in green), AO/PBR/HEAO are packed game masks kept as auxiliary textures, Skin is the shadow ramp and MC the matcap. Texture suffixes have no underscore (BodyNM, BodyAO). Toon shading is an approximation.",
+  "author": "HJT Studio",
+  "version": "1.0",
+  "detect": {
+    "min_score": 3,
+    "rules": [
+      {"target": "material", "pattern": "^R\\d[A-Z][A-Za-z]+Md\\d{6}", "weight": 3},
+      {"target": "texture", "pattern": "^R\\d[A-Z][A-Za-z]+Md\\d{6}\\w*(NM|PBR|Skin|MC)$", "weight": 2}
+    ]
+  },
+  "textures": {
+    "unity_slots": {
+      "_MainTex": "base_color", "_BumpMap": "normal", "_MaskTex": "mask", "_PBRMask": "mask",
+      "_SkinRamp": "ramp", "_SkinRampAO": "ramp", "_MatCapTex": "matcap", "_EmissionMap": "emission",
+      "_FaceMap": "face_map", "_CubeMap": "env"
+    },
+    "slots": [
+      {"slot": "normal", "pattern": "nm$"},
+      {"slot": "emission", "pattern": "em$"},
+      {"slot": "ramp", "pattern": "skin$"},
+      {"slot": "matcap", "pattern": "mc$"},
+      {"slot": "mask", "pattern": "(heao|ao|pbr|spec|ex|uv)$"}
+    ],
+    "strip_material_tokens": ["\\.\\d{3}$", "_\\d+$"]
+  },
+  "materials": {
+    "default": {"template": "TOON", "base_alpha_usage": "AUTO", "normal_format": "AG", "shadow_tint": [0.8, 0.78, 0.86], "shadow_threshold": 0.5},
+    "rules": [
+      {"match": "(?i)face", "category": "Face"},
+      {"match": "(?i)eye", "category": "Eye"},
+      {"match": "(?i)hair", "category": "Hair"},
+      {"match": "(?i)wobblewater", "category": "Effect", "settings": {"template": "FLAT"}}
+    ]
+  },
+  "corrections": {"align_bone_chains": true, "fit_bone_lengths": true, "verify_skinning": true}
+}

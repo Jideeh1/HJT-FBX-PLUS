@@ -97,6 +97,20 @@ class Session:
             if os.path.isdir(p):
                 added += self.add_folder(p, auto_analyze=auto_analyze, options=options)
                 continue
+            if p.endswith(ALL_PARTS):
+                folder = os.path.dirname(p)
+                parts = [os.path.join(folder, f) for f in os.listdir(folder) if is_uemodel(f)] if os.path.isdir(folder) else []
+                if parts:
+                    src = self.sources.get(p) or SourceState(p)
+                    src.kind, src.status, src.size, src.fbx = "FBX", "READY", sum(os.path.getsize(f) for f in parts), len(parts)
+                    src.label = os.path.basename(folder)
+                    self.sources[p] = src
+                    m = ModelState(p, p, None, src.size)
+                    m.label = "%s (all %d parts)" % (os.path.basename(folder), len(parts))
+                    if m.key not in self.models:
+                        self.models[m.key] = m
+                        added.append(m.key)
+                continue
             if not os.path.isfile(p):
                 continue
             if p.lower().endswith((".fbx", UE_EXT)):
@@ -128,9 +142,12 @@ class Session:
             if depth >= max_depth:
                 dirs[:] = []
             dirs[:] = [d for d in dirs if not d.startswith(".")]
+            ue = [f for f in files if is_uemodel(f)]
+            if len(ue) > 1:
+                found.append(os.path.join(root, ALL_PARTS))  #body + face + hair... = one character, one rig
             for f in sorted(files):
                 full = os.path.join(root, f)
-                if f.lower().endswith((".fbx", UE_EXT)) or is_archive_path(f):
+                if f.lower().endswith(".fbx") or is_archive_path(f) or (len(ue) == 1 and is_uemodel(f)):
                     found.append(full)
         return self.add_paths(found, auto_analyze=auto_analyze, options=options) if found else []
 
